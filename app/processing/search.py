@@ -19,15 +19,25 @@ def find_relevant_chunks(db: Session, query_vector: list, user_id: int, doc_id: 
     return results
 
 def generate_answer(query: str, relevant_chunks: list):
-    # Combine the chunk texts into one big context block
-    context = "\n\n".join([c.content for c in relevant_chunks])
+    # Create a numbered list of context pieces with their source filenames
+    context_parts = []
+    for i, chunk in enumerate(relevant_chunks):
+        # We access chunk.document.filename because of the relationship we built!
+        source_name = chunk.document.filename
+        context_parts.append(f"--- SOURCE {i+1} (File: {source_name}) ---\n{chunk.content}")
+    
+    context_text = "\n\n".join(context_parts)
     
     prompt = f"""
-    You are an AI Document Assistant. Use the provided context to answer the question.
-    If the answer isn't in the context, say you don't know. Do not make up facts.
+    You are a precise Document Assistant. Answer the question using ONLY the provided context.
     
+    STRICT RULES:
+    1. At the end of sentences that use information from a source, cite it like [1] or [2].
+    2. If the answer isn't in the context, say "I don't have enough information in your documents."
+    3. List the source filenames at the very bottom under a "Sources:" heading.
+
     Context:
-    {context}
+    {context_text}
     
     Question: {query}
     Answer:"""
@@ -35,6 +45,6 @@ def generate_answer(query: str, relevant_chunks: list):
     response = client.chat.completions.create(
         model="gpt-4o",
         messages=[{"role": "user", "content": prompt}],
-        temperature=0 # Keep it factual
+        temperature=0
     )
     return response.choices[0].message.content

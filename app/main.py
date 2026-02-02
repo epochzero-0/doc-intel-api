@@ -191,19 +191,38 @@ def chat_with_docs(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user)
 ):
+    # 1. Get the vector and find chunks
     query_vector = get_embedding(search_data.query)
-    
-    # Pass document_id into the search
     chunks = find_relevant_chunks(
         db, 
         query_vector, 
         user_id=current_user.id, 
-        doc_id=search_data.document_id, # This is the key change
-        limit=search_data.limit
+        doc_id=search_data.document_id
     )
     
     if not chunks:
-        return {"answer": "I couldn't find any relevant information in that document."}
+        return {"answer": "I couldn't find any relevant information in your documents.", "metadata": {"sources": []}}
         
+    # 2. Generate AI Answer with Citations
     answer = generate_answer(search_data.query, chunks)
-    return {"answer": answer}
+    
+    # 3. STRUCTURE THE METADATA
+    # We use a dictionary to ensure we only list each file once
+    unique_sources = {}
+    for c in chunks:
+        if c.document_id not in unique_sources:
+            unique_sources[c.document_id] = c.document.filename
+
+    # Format it into a nice list of objects
+    source_metadata = [
+        {"document_id": doc_id, "filename": fname} 
+        for doc_id, fname in unique_sources.items()
+    ]
+    
+    return {
+        "answer": answer,
+        "metadata": {
+            "total_chunks_found": len(chunks),
+            "sources": source_metadata
+        }
+    }
