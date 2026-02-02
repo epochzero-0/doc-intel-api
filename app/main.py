@@ -115,7 +115,8 @@ def process_document_task(doc_id: int, file_path: str):
     finally:
         db.close() # always close your session
 
-UPLOAD_DIR = "../uploads"
+BASE_DIR = os.path.dirname(os.path.abspath(__file__)) # this is the /app folder
+UPLOAD_DIR = os.path.join(BASE_DIR, "uploads")
 
 @app.post("/documents/upload", response_model=schemas.DocumentOut)
 async def upload_document(
