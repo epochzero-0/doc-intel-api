@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Configuration for JWT
-SECRET_KEY = "SUPER_SECRET_KEY_DONT_TELL_ANYONE" # In prod, use openssl rand -hex 32
+SECRET_KEY = "KEY" # in production, can use openssl rand -hex 32
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
 

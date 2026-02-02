@@ -6,7 +6,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# Format: postgresql://user:password@localhost:5432/dbname
+# format: postgresql://user:password@localhost:5432/dbname
 DATABASE_URL = os.getenv("DATABASE_URL")
 
 engine = create_engine(DATABASE_URL)
@@ -14,7 +14,7 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 Base = declarative_base()
 
-# Dependency to get DB session in FastAPI endpoints
+# dependency to get DB session in FastAPI endpoints
 def get_db():
     db = SessionLocal()
     try:

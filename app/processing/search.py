@@ -6,10 +6,10 @@ from processing.embedder import client
 def find_relevant_chunks(db: Session, query_vector: list, user_id: int, doc_id: int = None, limit: int = 3):
     query = db.query(models.Chunk).join(models.Document).filter(
         models.Document.user_id == user_id,
-        models.Document.status == "completed" # <--- ONLY SEARCH READY DOCS
+        models.Document.status == "completed" # only search completed documents
     )
     
-    # If the user provided a specific doc_id, filter by it!
+    # if the user provided a specific doc_id, filter by it
     if doc_id:
         query = query.filter(models.Chunk.document_id == doc_id)
         
@@ -20,10 +20,10 @@ def find_relevant_chunks(db: Session, query_vector: list, user_id: int, doc_id: 
     return results
 
 def generate_answer(query: str, relevant_chunks: list):
-    # Create a numbered list of context pieces with their source filenames
+    # create a numbered list of context pieces with their source filenames
     context_parts = []
     for i, chunk in enumerate(relevant_chunks):
-        # We access chunk.document.filename because of the relationship we built!
+        #  access chunk.document.filename because of the relationship we built
         source_name = chunk.document.filename
         context_parts.append(f"--- SOURCE {i+1} (File: {source_name}) ---\n{chunk.content}")
     

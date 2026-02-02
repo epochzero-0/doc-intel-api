@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 from database import get_db
 import auth, models, schemas
 
-# This tells FastAPI where to look for the token (the login endpoint)
+# this tells FastAPI where to look for the token (the login endpoint)
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/login")
 
 def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
@@ -15,7 +15,7 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
         headers={"WWW-Authenticate": "Bearer"},
     )
     try:
-        # Decode the JWT
+        # decoding the JWT
         payload = jwt.decode(token, auth.SECRET_KEY, algorithms=[auth.ALGORITHM])
         email: str = payload.get("sub")
         if email is None:

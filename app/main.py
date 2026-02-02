@@ -2,16 +2,15 @@ from fastapi import FastAPI, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from database import engine, Base, get_db
 import models, schemas, auth
-from dependencies import get_current_user # Add this import
-from fastapi.security import OAuth2PasswordRequestForm # Add this import
+from dependencies import get_current_user 
+from fastapi.security import OAuth2PasswordRequestForm 
 import shutil
 import os
 from fastapi import UploadFile, File
-# Use the folder path to import
 from processing.embedder import chunk_text, get_embedding
 from processing.parser import extract_text
-from processing.search import find_relevant_chunks, generate_answer # Add this import
-from fastapi import BackgroundTasks # <--- Add this import at the top
+from processing.search import find_relevant_chunks, generate_answer 
+from fastapi import BackgroundTasks 
 
 app = FastAPI(title="Doc Intel API")
 
@@ -25,18 +24,18 @@ def startup_event():
 
 @app.post("/auth/register", response_model=schemas.UserOut)
 def register(user_data: schemas.UserCreate, db: Session = Depends(get_db)):
-    # 1. Check if user already exists
+    # 1. check if user already exists
     existing_user = db.query(models.User).filter(models.User.email == user_data.email).first()
     if existing_user:
         raise HTTPException(status_code=400, detail="Email already registered")
     
-    # 2. Hash the password
+    # 2. hash the password
     hashed_pwd = auth.hash_password(user_data.password)
     
-    # 3. Create new user object
+    # 3. create new user object
     new_user = models.User(email=user_data.email, password_hash=hashed_pwd)
     
-    # 4. Save to Postgres
+    # 4. save to postgres
     db.add(new_user)
     db.commit()
     db.refresh(new_user)
@@ -47,17 +46,17 @@ def register(user_data: schemas.UserCreate, db: Session = Depends(get_db)):
 # Change user_data: schemas.UserCreate to form_data: OAuth2PasswordRequestForm
 def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
     
-    # Use form_data.username instead of user_data.email
+    # use form_data.username instead of user_data.email
     user = db.query(models.User).filter(models.User.email == form_data.username).first()
     
     if not user:
         raise HTTPException(status_code=403, detail="Invalid Credentials")
 
-    # Use form_data.password
+    # use form_data.password
     if not auth.verify_password(form_data.password, user.password_hash):
         raise HTTPException(status_code=403, detail="Invalid Credentials")
 
-    # Create Token
+    # create Token
     access_token = auth.create_access_token(data={"sub": user.email})
     
     return {"access_token": access_token, "token_type": "bearer"}
@@ -66,26 +65,25 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depend
 def read_users_me(current_user: models.User = Depends(get_current_user)):
     return current_user
 
-from database import SessionLocal # Import your session maker
-
+from database import SessionLocal # import your session maker
 def process_document_task(doc_id: int, file_path: str):
-    # Create a fresh database session for this background thread
+    # create a fresh database session for this background thread
     db = SessionLocal()
     try:
-        # 3. Unified Extraction
+        # 3. unified extraction
         raw_text = extract_text(file_path)
         
         if not raw_text or raw_text.startswith("Unsupported"):
             if os.path.exists(file_path):
                 os.remove(file_path)
-            print(f"❌ Processing failed for doc {doc_id}")
+            print(f"Processing failed for doc {doc_id}")
             return
 
-        # 5. Break into chunks
+        # 5. break into chunks
         chunks = chunk_text(raw_text)
         
         # 7. Generate Embeddings and Save Chunks
-        print(f"🧠 Generating embeddings for {len(chunks)} chunks in background...")
+        print(f"Generating embeddings for {len(chunks)} chunks in background...")
         for i, chunk_content in enumerate(chunks):
             vector = get_embedding(chunk_content)
             new_chunk = models.Chunk(
@@ -102,10 +100,10 @@ def process_document_task(doc_id: int, file_path: str):
             doc.status = "completed"
         
         db.commit()
-        print(f"✅ Processing finished and status updated for doc {doc_id}")
+        print(f"Processing finished and status updated for doc {doc_id}")
         
         db.commit()
-        print(f"✅ Background processing finished for doc {doc_id}!")
+        print(f"Background processing finished for doc {doc_id}!")
         
     except Exception as e:
         # NEW: If it fails, mark it as failed so the user knows
@@ -121,19 +119,19 @@ UPLOAD_DIR = "../uploads"
 
 @app.post("/documents/upload", response_model=schemas.DocumentOut)
 async def upload_document(
-    background_tasks: BackgroundTasks, # Added
+    background_tasks: BackgroundTasks, # 
     file: UploadFile = File(...), 
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user)
 ):
-    # 1. Create file path
+    # 1. create file path
     file_path = os.path.join(UPLOAD_DIR, f"{current_user.id}_{file.filename}")
 
-    # 2. Save physical file (very fast)
+    # 2. save physical file 
     with open(file_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
     
-    # 6. Save Document Metadata (so we have a doc_id to work with)
+    # 6. save document Metadata (so we have a doc_id to work with)
     new_doc = models.Document(
         filename=file.filename,
         user_id=current_user.id
@@ -142,7 +140,7 @@ async def upload_document(
     db.commit()
     db.refresh(new_doc)
 
-    # NEW: Trigger the background worker
+    # new: trigger the background worker
     background_tasks.add_task(process_document_task, new_doc.id, file_path)
 
     return new_doc
@@ -152,7 +150,7 @@ def get_my_documents(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user)
 ):
-    # Only return documents belonging to the logged-in user
+    # only return documents belonging to the logged-in user
     return db.query(models.Document).filter(models.Document.user_id == current_user.id).all()
 
 @app.post("/documents/search", response_model=list[schemas.SearchResult])
@@ -161,13 +159,10 @@ def search_documents(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user)
 ):
-    # 1. Turn the user's question into a vector
+    # 1. turn the user's question into a vector
     query_vector = get_embedding(search_data.query)
     
-    # 2. Find the most relevant chunks in the database
-    # Note: Currently, this searches ALL documents. 
-    # In prod, we'd filter by current_user.id
-    # updated: Pass the current_user.id to the search function
+    # 2. find the most relevant chunks in the database
     relevant_chunks = find_relevant_chunks(
         db, 
         query_vector, 
@@ -183,7 +178,7 @@ def delete_document(
     db: Session = Depends(get_db), 
     current_user: models.User = Depends(get_current_user)
 ):
-    # 1. Find the document and verify ownership
+    # 1. find the document and verify ownership
     doc = db.query(models.Document).filter(
         models.Document.id == doc_id, 
         models.Document.user_id == current_user.id
@@ -192,12 +187,12 @@ def delete_document(
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
 
-    # 2. Delete the physical file from the 'uploads' folder
+    # 2. delete the physical file from the 'uploads' folder
     file_path = os.path.join(UPLOAD_DIR, f"{current_user.id}_{doc.filename}")
     if os.path.exists(file_path):
         os.remove(file_path)
 
-    # 3. Delete from DB (This automatically deletes all related chunks!)
+    # 3. delete from DB (this allso automatically deletes all related chunks)
     db.delete(doc)
     db.commit()
 
@@ -229,7 +224,7 @@ def chat_with_docs(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user)
 ):
-    # 1. Get the vector and find chunks
+    # 1. get the vector and find chunks
     query_vector = get_embedding(search_data.query)
     chunks = find_relevant_chunks(
         db, 
@@ -241,17 +236,17 @@ def chat_with_docs(
     if not chunks:
         return {"answer": "I couldn't find any relevant information in your documents.", "metadata": {"sources": []}}
         
-    # 2. Generate AI Answer with Citations
+    # 2. generate AI Answer with Citations
     answer = generate_answer(search_data.query, chunks)
     
     # 3. STRUCTURE THE METADATA
-    # We use a dictionary to ensure we only list each file once
+    # using a dictionary to ensure we only list each file once
     unique_sources = {}
     for c in chunks:
         if c.document_id not in unique_sources:
             unique_sources[c.document_id] = c.document.filename
 
-    # Format it into a nice list of objects
+    # formatting
     source_metadata = [
         {"document_id": doc_id, "filename": fname} 
         for doc_id, fname in unique_sources.items()

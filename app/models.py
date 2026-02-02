@@ -1,7 +1,7 @@
 from sqlalchemy import Column, Integer, String, ForeignKey, DateTime, Text
 from pgvector.sqlalchemy import Vector
 from datetime import datetime
-from database import Base # No dot here
+from database import Base 
 from sqlalchemy.orm import relationship 
 from pydantic import BaseModel
 
@@ -12,7 +12,7 @@ class User(Base):
     password_hash = Column(String, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
 
-    # This links User to Documents
+    # this links User to Documents
     documents = relationship("Document", back_populates="owner", cascade="all, delete-orphan")
 
 class Document(Base):
@@ -21,10 +21,10 @@ class Document(Base):
     user_id = Column(Integer, ForeignKey("users.id"))
     filename = Column(String, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
-    # Add this line:
+
     status = Column(String, default="processing") # processing, completed, failed
-    
-    # Relationships
+
+    # relationships
     owner = relationship("User", back_populates="documents")
     chunks = relationship("Chunk", back_populates="document", cascade="all, delete-orphan")
 
@@ -42,4 +42,4 @@ class Chunk(Base):
 class SearchQuery(BaseModel):
     query: str
     limit: int = 3
-    document_id: int = None  # Add this optional field
+    document_id: int = None  # optional

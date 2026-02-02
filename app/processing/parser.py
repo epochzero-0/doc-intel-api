@@ -23,10 +23,10 @@ def extract_text(file_path: str) -> str:
         else:
             return f"Unsupported file type: {ext}"
 
-        # Clean up the text (remove excessive whitespace)
+        # cleaning up the text (remove excessive whitespace)
         return " ".join(text.split())
 
     except Exception as e:
-        # This is your Error Handling deliverable
-        print(f"❌ Error parsing {file_path}: {str(e)}")
+        
+        print(f"Error parsing {file_path}: {str(e)}")
         return ""
