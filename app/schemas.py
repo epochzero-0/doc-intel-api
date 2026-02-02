@@ -24,9 +24,11 @@ class DocumentOut(BaseModel):
     id: int
     filename: str
     user_id: int
+    status: str  # This will show "processing", "completed", or "failed"
     created_at: datetime
 
     class Config:
+        # This allows Pydantic to read data from SQLAlchemy models
         from_attributes = True
 
 class SearchQuery(BaseModel):

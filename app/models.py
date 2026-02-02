@@ -21,7 +21,9 @@ class Document(Base):
     user_id = Column(Integer, ForeignKey("users.id"))
     filename = Column(String, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
-
+    # Add this line:
+    status = Column(String, default="processing") # processing, completed, failed
+    
     # Relationships
     owner = relationship("User", back_populates="documents")
     chunks = relationship("Chunk", back_populates="document", cascade="all, delete-orphan")

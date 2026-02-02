@@ -5,7 +5,8 @@ from processing.embedder import client
 
 def find_relevant_chunks(db: Session, query_vector: list, user_id: int, doc_id: int = None, limit: int = 3):
     query = db.query(models.Chunk).join(models.Document).filter(
-        models.Document.user_id == user_id
+        models.Document.user_id == user_id,
+        models.Document.status == "completed" # <--- ONLY SEARCH READY DOCS
     )
     
     # If the user provided a specific doc_id, filter by it!

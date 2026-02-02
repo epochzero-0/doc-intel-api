@@ -11,6 +11,7 @@ from fastapi import UploadFile, File
 from processing.embedder import chunk_text, get_embedding
 from processing.parser import extract_text
 from processing.search import find_relevant_chunks, generate_answer # Add this import
+from fastapi import BackgroundTasks # <--- Add this import at the top
 
 app = FastAPI(title="Doc Intel API")
 
@@ -65,41 +66,74 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depend
 def read_users_me(current_user: models.User = Depends(get_current_user)):
     return current_user
 
+from database import SessionLocal # Import your session maker
+
+def process_document_task(doc_id: int, file_path: str):
+    # Create a fresh database session for this background thread
+    db = SessionLocal()
+    try:
+        # 3. Unified Extraction
+        raw_text = extract_text(file_path)
+        
+        if not raw_text or raw_text.startswith("Unsupported"):
+            if os.path.exists(file_path):
+                os.remove(file_path)
+            print(f"❌ Processing failed for doc {doc_id}")
+            return
+
+        # 5. Break into chunks
+        chunks = chunk_text(raw_text)
+        
+        # 7. Generate Embeddings and Save Chunks
+        print(f"🧠 Generating embeddings for {len(chunks)} chunks in background...")
+        for i, chunk_content in enumerate(chunks):
+            vector = get_embedding(chunk_content)
+            new_chunk = models.Chunk(
+                document_id=doc_id,
+                content=chunk_content,
+                chunk_index=i,
+                embedding=vector
+            )
+            db.add(new_chunk)
+        
+        # NEW: Update the status to completed
+        doc = db.query(models.Document).filter(models.Document.id == doc_id).first()
+        if doc:
+            doc.status = "completed"
+        
+        db.commit()
+        print(f"✅ Processing finished and status updated for doc {doc_id}")
+        
+        db.commit()
+        print(f"✅ Background processing finished for doc {doc_id}!")
+        
+    except Exception as e:
+        # NEW: If it fails, mark it as failed so the user knows
+        doc = db.query(models.Document).filter(models.Document.id == doc_id).first()
+        if doc:
+            doc.status = "failed"
+        db.commit()
+        print(f"🔥 Error in background task: {e}")
+    finally:
+        db.close() # always close your session
+
 UPLOAD_DIR = "../uploads"
 
 @app.post("/documents/upload", response_model=schemas.DocumentOut)
 async def upload_document(
+    background_tasks: BackgroundTasks, # Added
     file: UploadFile = File(...), 
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user)
 ):
-    # 1. Create the file path
+    # 1. Create file path
     file_path = os.path.join(UPLOAD_DIR, f"{current_user.id}_{file.filename}")
 
-    # 2. Save the physical file
+    # 2. Save physical file (very fast)
     with open(file_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
     
-    # 3. Unified Extraction (PDF, DOCX, TXT)
-    raw_text = extract_text(file_path)
-    
-    # 4. Error Handling: Stop if extraction failed or file is unsupported
-    if not raw_text or raw_text.startswith("Unsupported"):
-        if os.path.exists(file_path):
-            os.remove(file_path) # Clean up the bad file
-        raise HTTPException(
-            status_code=400, 
-            detail="File processing failed. Ensure it is a valid PDF, DOCX, or TXT."
-        )
-
-    # 5. Break into chunks
-    chunks = chunk_text(raw_text)
-    
-    print(f"✅ Document Processed: {file.filename}")
-    print(f"📄 Characters: {len(raw_text)}")
-    print(f"✂️ Total Chunks Created: {len(chunks)}")
-
-    # 6. Save Document Metadata
+    # 6. Save Document Metadata (so we have a doc_id to work with)
     new_doc = models.Document(
         filename=file.filename,
         user_id=current_user.id
@@ -108,23 +142,8 @@ async def upload_document(
     db.commit()
     db.refresh(new_doc)
 
-     # 7. Generate Embeddings and Save Chunks
-    print(f"🧠 Generating embeddings for {len(chunks)} chunks...")
-    
-    for i, chunk_content in enumerate(chunks):
-        # The real API call happens here
-        vector = get_embedding(chunk_content)
-        
-        new_chunk = models.Chunk(
-            document_id=new_doc.id,
-            content=chunk_content,
-            chunk_index=i,
-            embedding=vector
-        )
-        db.add(new_chunk)
-    
-    db.commit()
-    print(f"✅ All chunks embedded and saved to pgvector!")
+    # NEW: Trigger the background worker
+    background_tasks.add_task(process_document_task, new_doc.id, file_path)
 
     return new_doc
 
@@ -135,7 +154,6 @@ def get_my_documents(
 ):
     # Only return documents belonging to the logged-in user
     return db.query(models.Document).filter(models.Document.user_id == current_user.id).all()
-
 
 @app.post("/documents/search", response_model=list[schemas.SearchResult])
 def search_documents(
@@ -184,6 +202,26 @@ def delete_document(
     db.commit()
 
     return None
+
+@app.get("/documents/{doc_id}/status")
+def get_document_status(
+    doc_id: int, 
+    db: Session = Depends(get_db), 
+    current_user: models.User = Depends(get_current_user)
+):
+    doc = db.query(models.Document).filter(
+        models.Document.id == doc_id, 
+        models.Document.user_id == current_user.id
+    ).first()
+
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    return {
+        "document_id": doc.id,
+        "filename": doc.filename,
+        "status": doc.status
+    }
 
 @app.post("/documents/chat")
 def chat_with_docs(
