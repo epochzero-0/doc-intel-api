@@ -2,8 +2,8 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
 from sqlalchemy.orm import Session
-from database import get_db
-import auth, models, schemas
+from app.database import get_db
+from app import auth, models, schemas
 
 # this tells FastAPI where to look for the token (the login endpoint)
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/login")

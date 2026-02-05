@@ -1,15 +1,15 @@
 from fastapi import FastAPI, Depends, HTTPException, status
 from sqlalchemy.orm import Session
-from database import engine, Base, get_db
-import models, schemas, auth
-from dependencies import get_current_user 
+from app.database import engine, Base, get_db
+from app import models, schemas, auth
+from app.dependencies import get_current_user 
 from fastapi.security import OAuth2PasswordRequestForm 
 import shutil
 import os
 from fastapi import UploadFile, File
-from processing.embedder import chunk_text, get_embedding
-from processing.parser import extract_text
-from processing.search import find_relevant_chunks, generate_answer 
+from app.processing.embedder import chunk_text, get_embedding
+from app.processing.parser import extract_text
+from app.processing.search import find_relevant_chunks, generate_answer 
 from fastapi import BackgroundTasks 
 
 app = FastAPI(title="Doc Intel API")
@@ -65,7 +65,7 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depend
 def read_users_me(current_user: models.User = Depends(get_current_user)):
     return current_user
 
-from database import SessionLocal # import your session maker
+from app.database import SessionLocal # import your session maker
 def process_document_task(doc_id: int, file_path: str):
     # create a fresh database session for this background thread
     db = SessionLocal()

@@ -1,7 +1,7 @@
 from sqlalchemy.orm import Session
 from pgvector.sqlalchemy import Vector
-import models
-from processing.embedder import client
+from app import models
+from app.processing.embedder import client
 
 def find_relevant_chunks(db: Session, query_vector: list, user_id: int, doc_id: int = None, limit: int = 3):
     query = db.query(models.Chunk).join(models.Document).filter(
