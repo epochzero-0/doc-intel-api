@@ -1,12 +1,14 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
+import useBackendWake from '../hooks/useBackendWake'
 
 export default function Register() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const { register, isRegisterLoading } = useAuth()
+  const { showWakeBanner, retry } = useBackendWake()
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -24,6 +26,19 @@ export default function Register() {
           <h1 className="text-3xl font-bold text-gray-900">Doc Intel</h1>
           <p className="text-gray-600 mt-2">Create your account</p>
         </div>
+
+        {showWakeBanner && (
+          <div
+            role="status"
+            aria-live="polite"
+            className="mb-4 p-3 rounded-md bg-yellow-50 border border-yellow-200 text-sm text-yellow-800 flex items-center justify-between"
+          >
+            <div>Backend may be waking from sleep - first request can take 10–30s.</div>
+            <button onClick={retry} className="ml-4 text-yellow-700 hover:underline font-medium">
+              Retry
+            </button>
+          </div>
+        )}
 
         <form onSubmit={handleSubmit} className="space-y-6">
           <div>

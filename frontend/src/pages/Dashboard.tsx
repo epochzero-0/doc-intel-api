@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import { useAuth } from '../hooks/useAuth'
 import { ChatProvider } from '../context/ChatContext'
 import Sidebar from '../components/Layout/Sidebar'
@@ -9,6 +10,13 @@ import { useChat } from '../context/ChatContext'
 
 export default function Dashboard() {
   const { user, logout } = useAuth()
+
+  useEffect(() => {
+    // Ensure we start at the top of the page when navigating to the dashboard
+    if (typeof window !== 'undefined') {
+      window.scrollTo({ top: 0, left: 0 })
+    }
+  }, [])
 
   return (
     <ChatProvider>
