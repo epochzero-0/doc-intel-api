@@ -6,7 +6,7 @@ import ChatMessage from './ChatMessage'
 export default function ChatSection() {
   const [input, setInput] = useState('')
   const messagesEndRef = useRef<HTMLDivElement>(null)
-  const { messages, sendMessage, isLoading, selectedDocId, setSelectedDocId, clearChat } = useChat()
+  const { messages, sendMessage, isLoading, selectedDocId, setSelectedDocId, clearChat, searchThenChat, lastSearchQuery, lastSearchResults } = useChat()
   const { documents } = useDocuments()
 
   const completedDocs = documents.filter((d) => d.status === 'completed')
@@ -22,13 +22,14 @@ export default function ChatSection() {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     if (input.trim() && !isLoading) {
-      sendMessage(input)
+      // perform search first (retrieval transparency) then chat
+      searchThenChat(input)
       setInput('')
     }
   }
 
   return (
-    <div className="bg-white rounded-xl shadow-sm flex flex-col h-[600px]">
+    <div className="bg-white rounded-xl shadow-sm flex flex-col min-h-0 h-full">
       {/* Header */}
       <div className="p-4 border-b">
         <div className="flex items-center justify-between">
@@ -65,7 +66,7 @@ export default function ChatSection() {
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+      <div className="flex-1 overflow-y-auto p-4 space-y-4 min-h-0">
         {messages.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-gray-500">
             <svg className="w-12 h-12 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">

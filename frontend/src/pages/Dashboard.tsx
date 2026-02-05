@@ -2,6 +2,10 @@ import { useAuth } from '../hooks/useAuth'
 import { ChatProvider } from '../context/ChatContext'
 import Sidebar from '../components/Layout/Sidebar'
 import MainContent from '../components/Layout/MainContent'
+import DashboardLayout from '../components/Layout/DashboardLayout'
+import RetrievalInspector from '../components/RetrievalInspector'
+import SourceDrawer from '../components/SourceDrawer'
+import { useChat } from '../context/ChatContext'
 
 export default function Dashboard() {
   const { user, logout } = useAuth()
@@ -29,19 +33,24 @@ export default function Dashboard() {
 
         {/* Main Layout */}
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-          <div className="flex flex-col lg:flex-row gap-6">
-            {/* Sidebar */}
-            <div className="w-full lg:w-80 flex-shrink-0">
-              <Sidebar />
-            </div>
-
-            {/* Main Content */}
-            <div className="flex-1">
-              <MainContent />
-            </div>
-          </div>
+          <DashboardBody />
         </div>
       </div>
     </ChatProvider>
+  )
+}
+
+function DashboardBody() {
+  const { lastSearchQuery, lastSearchResults, messages } = useChat()
+
+  return (
+    <DashboardLayout
+      left={<Sidebar />}
+      center={<MainContent />}
+      right={<>
+        <RetrievalInspector query={lastSearchQuery} results={lastSearchResults} />
+        <div className="mt-4"><SourceDrawer sources={messages.find((m) => m.role === 'assistant')?.sources || []} open={true} /></div>
+      </>}
+    />
   )
 }

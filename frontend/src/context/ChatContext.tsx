@@ -13,6 +13,9 @@ interface ChatMessage {
 interface ChatContextType {
   messages: ChatMessage[]
   sendMessage: (query: string) => void
+  searchThenChat: (query: string) => Promise<void>
+  lastSearchQuery: string | null
+  lastSearchResults: any[]
   clearChat: () => void
   isLoading: boolean
   selectedDocId: number | undefined
@@ -24,6 +27,8 @@ const ChatContext = createContext<ChatContextType | null>(null)
 export function ChatProvider({ children }: { children: ReactNode }) {
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [selectedDocId, setSelectedDocId] = useState<number | undefined>()
+  const [lastSearchQuery, setLastSearchQuery] = useState<string | null>(null)
+  const [lastSearchResults, setLastSearchResults] = useState<any[]>([])
 
   const chatMutation = useMutation({
     mutationFn: chatApi.chat,
@@ -36,6 +41,20 @@ export function ChatProvider({ children }: { children: ReactNode }) {
           sources: data.metadata.sources,
         },
       ])
+      // update local analytics: mark docs as used
+      try {
+        data.metadata.sources.forEach((s) => {
+          const key = `doc_stats_${s.document_id}`
+          const raw = localStorage.getItem(key)
+          const stat = raw ? JSON.parse(raw) : { timesQueried: 0, lastUsed: null, successes: 0, failures: 0, favorite: false }
+          stat.timesQueried += 1
+          stat.lastUsed = new Date().toISOString()
+          stat.successes += data.answer ? 1 : 0
+          localStorage.setItem(key, JSON.stringify(stat))
+        })
+      } catch (e) {
+        // ignore storage failures
+      }
     },
     onError: (error: any) => {
       const message = error.response?.data?.detail || 'Failed to get response'
@@ -55,6 +74,21 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     })
   }
 
+  const searchThenChat = async (query: string) => {
+    if (!query.trim()) return
+    // call search first for retrieval transparency
+    try {
+      setLastSearchQuery(query)
+      const results = await chatApi.search({ query, document_id: selectedDocId, limit: 5 })
+      setLastSearchResults(results || [])
+    } catch (e) {
+      setLastSearchResults([])
+    }
+
+    // then send chat request
+    sendMessage(query)
+  }
+
   const clearChat = () => {
     setMessages([])
   }
@@ -64,6 +98,9 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       value={{
         messages,
         sendMessage,
+        searchThenChat,
+        lastSearchQuery,
+        lastSearchResults,
         clearChat,
         isLoading: chatMutation.isPending,
         selectedDocId,
