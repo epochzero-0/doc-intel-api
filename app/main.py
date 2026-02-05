@@ -1,4 +1,5 @@
 from fastapi import FastAPI, Depends, HTTPException, status
+from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from app.database import engine, Base, get_db
 from app import models, schemas, auth
@@ -13,6 +14,15 @@ from app.processing.search import find_relevant_chunks, generate_answer
 from fastapi import BackgroundTasks 
 
 app = FastAPI(title="Doc Intel API")
+
+# CORS configuration
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # In production, replace with specific origins
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 @app.get("/")
 def home():
@@ -116,7 +126,12 @@ def process_document_task(doc_id: int, file_path: str):
         db.close() # always close your session
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__)) # this is the /app folder
-UPLOAD_DIR = os.path.join(BASE_DIR, "uploads")
+# place uploads in the project root (one level above `app`) so the existing
+# top-level `uploads/` directory is used
+PROJECT_ROOT = os.path.dirname(BASE_DIR)
+UPLOAD_DIR = os.path.join(PROJECT_ROOT, "uploads")
+# ensure the uploads directory exists
+os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 @app.post("/documents/upload", response_model=schemas.DocumentOut)
 async def upload_document(

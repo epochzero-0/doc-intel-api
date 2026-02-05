@@ -1,0 +1,24 @@
+{
+  "name": "doc-intel-api",
+  "version": "1.0.0",
+  "description": "**Doc-Intel API** is a high-performance, asynchronous Retrieval-Augmented Generation (RAG) system. It allows users to upload private documents (PDF, DOCX, TXT) and have \"grounded\" conversations with them using OpenAI's GPT-4o and Semantic Search.",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs",
+    "test": "tests"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/epochzero-0/doc-intel-api.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/epochzero-0/doc-intel-api/issues"
+  },
+  "homepage": "https://github.com/epochzero-0/doc-intel-api#readme"
+}
