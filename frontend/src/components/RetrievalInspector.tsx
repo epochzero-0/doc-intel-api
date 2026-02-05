@@ -1,4 +1,3 @@
-import React from 'react'
 import { motion } from 'framer-motion'
 import type { SearchResult } from '../types'
 
@@ -51,7 +50,7 @@ export default function RetrievalInspector({
             return (
               <motion.div key={idx} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} className="p-2 border rounded min-w-0">
                 <div className="flex items-center justify-between">
-                  <div className="text-sm font-medium text-gray-900 truncate">{r.filename ?? `Document ${r.document_id}`}</div>
+                  <div className="text-sm font-medium text-gray-900 truncate">{`Document ${r.document_id}`}</div>
                   <div className="text-xs text-gray-500">Chunk {r.chunk_index}</div>
                 </div>
 

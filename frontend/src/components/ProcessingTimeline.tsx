@@ -1,5 +1,3 @@
-import React from 'react'
-
 export default function ProcessingTimeline({ status }: { status: 'processing' | 'completed' | 'failed' }) {
   const steps = [
     { key: 'uploaded', label: 'Uploaded' },

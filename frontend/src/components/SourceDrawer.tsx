@@ -1,5 +1,3 @@
-import React from 'react'
-
 export default function SourceDrawer({ sources, open }: { sources: { document_id: number; filename: string }[]; open: boolean }) {
   if (!open) return null
 

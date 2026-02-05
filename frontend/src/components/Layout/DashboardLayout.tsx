@@ -1,13 +1,13 @@
-import React from 'react'
+import type { ReactNode } from 'react'
 
 export default function DashboardLayout({
   left,
   center,
   right,
 }: {
-  left: React.ReactNode
-  center: React.ReactNode
-  right: React.ReactNode
+  left: ReactNode
+  center: ReactNode
+  right: ReactNode
 }) {
   return (
     <main className="w-full h-[calc(100vh-80px)] overflow-hidden" style={{}}>

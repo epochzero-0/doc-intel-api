@@ -6,7 +6,7 @@ import ChatMessage from './ChatMessage'
 export default function ChatSection() {
   const [input, setInput] = useState('')
   const messagesEndRef = useRef<HTMLDivElement>(null)
-  const { messages, sendMessage, isLoading, selectedDocId, setSelectedDocId, clearChat, searchThenChat, lastSearchQuery, lastSearchResults } = useChat()
+  const { messages, isLoading, selectedDocId, setSelectedDocId, clearChat, searchThenChat } = useChat()
   const { documents } = useDocuments()
 
   const completedDocs = documents.filter((d) => d.status === 'completed')

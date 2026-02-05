@@ -1,5 +1,3 @@
-import React from 'react'
-
 export default function QueryHistory({ items, onSelect }: { items: string[]; onSelect: (q: string) => void }) {
   if (!items || items.length === 0) return null
   return (

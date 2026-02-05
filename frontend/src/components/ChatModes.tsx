@@ -1,5 +1,3 @@
-import React from 'react'
-
 export default function ChatModes({ mode, setMode }: { mode: string; setMode: (m: string) => void }) {
   const modes = [
     { id: 'semantic', label: 'Semantic Search' },
