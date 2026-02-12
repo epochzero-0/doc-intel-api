@@ -114,3 +114,108 @@ Notes: all enhancements are client-side only — no backend endpoints were added
 - UI/UX code lives in `frontend/src/components` — look at `RetrievalInspector.tsx`, `DocumentStats.tsx`, `ChatSection.tsx` for the new functionality.
 - The app uses React Query for data fetching, TailwindCSS for styling, Framer Motion for small animations, and `localStorage` for client analytics.
 - We intentionally do a client-side `search` call before the `chat` call (in `ChatContext`) to expose retrieval transparency without changing backend behavior.
+
+## Environment Setup Guide
+
+### 1. Two Separate Environment Files
+
+This project uses **two different env files** because the frontend and backend are independent applications.
+
+#### Frontend Environment – `frontend/.env`
+
+Used only by the React app to know **where the FastAPI backend is located**.
+
+**Local development**
+
+```
+VITE_APP_URL=http://localhost:8000
+```
+
+**Production deployment**
+
+```
+VITE_APP_URL=https://doc-intel-api.onrender.com
+```
+
+> Do not place secrets such as OpenAI keys in this file. It is exposed to the browser.
+
+---
+
+#### Backend Environment – `.env` in project root
+
+Used by FastAPI to connect to infrastructure.
+
+```
+DATABASE_URL=postgresql://user:password@host:5432/dbname
+OPENAI_API_KEY=sk-xxxxxxxx
+```
+
+> This file must never be committed to Git. Add it to `.gitignore`.
+
+---
+
+### 2. Enable pgvector in Neon PostgreSQL
+
+Run this once in your Neon database SQL editor:
+
+```sql
+CREATE EXTENSION IF NOT EXISTS vector;
+```
+
+Verify installation:
+
+```sql
+\dx
+SELECT '[1,2,3]'::vector;
+```
+
+---
+
+### 3. Python Virtual Environment Setup
+
+From project root:
+
+```bash
+& "C:\Users\gupta\AppData\Local\Programs\Python\Python314\python.exe" -m venv venv
+```
+
+Activate:
+
+```bash
+# Windows PowerShell
+.\venv\Scripts\Activate.ps1
+
+# Mac / Linux
+source venv/bin/activate
+```
+
+Install dependencies:
+
+```bash
+pip install -r requirements.txt
+```
+
+Run backend:
+
+```bash
+uvicorn app.main:app --reload
+```
+
+---
+
+### 4. Frontend Startup
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+---
+
+### Quick Mental Model
+
+* **frontend/.env** → tells the browser where the API lives
+* **backend .env** → tells FastAPI how to reach Postgres and OpenAI
+* pgvector must be enabled once in the database
+* always run inside a Python virtual environment
