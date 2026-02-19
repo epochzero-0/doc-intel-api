@@ -213,7 +213,7 @@ npm run dev
 
 ---
 
-### Quick Mental Model
+### Note
 
 * **frontend/.env** → tells the browser where the API lives
 * **backend .env** → tells FastAPI how to reach Postgres and OpenAI
