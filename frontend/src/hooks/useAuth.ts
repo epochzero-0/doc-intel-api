@@ -27,7 +27,7 @@ export function useAuth() {
       setIsAuthenticated(true)
       queryClient.invalidateQueries({ queryKey: ['user'] })
       toast.success('Login successful!')
-      navigate('/')
+      navigate('/app')
     },
     onError: (error: any) => {
       const message = error.response?.data?.detail || 'Login failed'

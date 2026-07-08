@@ -12,3 +12,4 @@ uploads/
 # OS files
 Thumbs.db
 .DS_Store
+.vscode
