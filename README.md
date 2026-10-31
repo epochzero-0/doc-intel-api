@@ -128,13 +128,13 @@ Used only by the React app to know **where the FastAPI backend is located**.
 **Local development**
 
 ```
-VITE_APP_URL=http://localhost:8000
+VITE_API_URL=http://localhost:8000
 ```
 
 **Production deployment**
 
 ```
-VITE_APP_URL=https://doc-intel-api.onrender.com
+VITE_API_URL=https://d2lsz7byx8f9wk.cloudfront.net
 ```
 
 > Do not place secrets such as OpenAI keys in this file. It is exposed to the browser.
