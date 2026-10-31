@@ -2,6 +2,53 @@
 @tailwind components;
 @tailwind utilities;
 
-body {
-  @apply bg-gray-50 text-gray-900;
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+  body {
+    @apply bg-paper text-ink font-sans antialiased;
+  }
+  h1,
+  h2,
+  h3 {
+    text-wrap: balance;
+  }
+  ::selection {
+    @apply bg-hl text-ink;
+  }
+  :focus-visible {
+    @apply outline outline-2 outline-offset-2 outline-ink;
+  }
+}
+
+@layer components {
+  /* The highlighter: a yellow stroke behind cited text. It sweeps in once; reduced motion shows it static. */
+  .mark {
+    @apply bg-hl text-ink;
+    background-image: none;
+    border-radius: 2px;
+    box-decoration-break: clone;
+    -webkit-box-decoration-break: clone;
+    padding: 0 0.125em;
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    .mark-sweep {
+      background-color: transparent;
+      background-image: linear-gradient(theme('colors.hl'), theme('colors.hl'));
+      background-repeat: no-repeat;
+      @apply animate-sweep;
+    }
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
+    scroll-behavior: auto !important;
+  }
 }

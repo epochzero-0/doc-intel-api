@@ -1,114 +1,141 @@
+import { useState } from 'react'
 import { useDocuments } from '../../hooks/useDocuments'
 import { useChat } from '../../hooks/useChat'
 import type { Document } from '../../types'
-import DocumentStats from '../DocumentStats'
-import ProcessingTimeline from '../ProcessingTimeline'
+import StatusPill from '../ui/StatusPill'
+import { Button } from '../ui/Button'
 import UploadSection from '../Upload/UploadSection'
 
-function StatusBadge({ status }: { status: Document['status'] }) {
-  const colors = {
-    processing: 'bg-yellow-100 text-yellow-800',
-    completed: 'bg-green-100 text-green-800',
-    failed: 'bg-red-100 text-red-800',
+function usage(docId: number): string | null {
+  try {
+    const raw = localStorage.getItem(`doc_stats_${docId}`)
+    if (!raw) return null
+    const { timesQueried, lastUsed } = JSON.parse(raw)
+    if (!timesQueried) return null
+    const when = lastUsed ? new Date(lastUsed).toLocaleDateString(undefined, { day: 'numeric', month: 'short' }) : null
+    return `Used in ${timesQueried} ${timesQueried === 1 ? 'answer' : 'answers'}${when ? `, last ${when}` : ''}`
+  } catch {
+    return null
+  }
+}
+
+function added(doc: Document) {
+  return new Date(doc.created_at + (doc.created_at.endsWith('Z') ? '' : 'Z')).toLocaleDateString(undefined, {
+    day: 'numeric',
+    month: 'short',
+  })
+}
+
+function DocumentRow({ doc }: { doc: Document }) {
+  const { documentId, setDocumentId } = useChat()
+  const { deleteDocument, deletingId } = useDocuments()
+  const [confirming, setConfirming] = useState(false)
+  const selected = documentId === doc.id
+  const ready = doc.status === 'completed'
+
+  const detail =
+    doc.status === 'processing'
+      ? 'Extracting text and building the index'
+      : doc.status === 'failed'
+        ? 'Could not read this file. A scanned PDF has no text layer; run OCR on it and upload again.'
+        : (usage(doc.id) ?? `Added ${added(doc)}`)
+
+  if (confirming) {
+    return (
+      <li className="grid gap-2 rounded border border-bad/30 bg-bad-soft p-3">
+        <p className="text-sm text-bad">
+          Delete <span className="break-all font-mono text-xs">{doc.filename}</span>? Its chunks go too.
+        </p>
+        <div className="flex gap-2">
+          <Button
+            variant="danger"
+            size="sm"
+            disabled={deletingId === doc.id}
+            onClick={() => {
+              if (selected) setDocumentId(undefined)
+              deleteDocument(doc.id)
+            }}
+          >
+            {deletingId === doc.id ? 'Deleting…' : 'Delete'}
+          </Button>
+          <Button variant="quiet" size="sm" onClick={() => setConfirming(false)}>
+            Keep it
+          </Button>
+        </div>
+      </li>
+    )
   }
 
   return (
-    <span className={`text-xs px-2 py-1 rounded-full ${colors[status]}`}>
-      {status}
-    </span>
+    <li className={`group relative rounded transition-colors ${selected ? 'bg-surface ring-1 ring-inset ring-line' : 'hover:bg-surface'}`}>
+      <button
+        type="button"
+        disabled={!ready}
+        aria-pressed={selected}
+        onClick={() => setDocumentId(selected ? undefined : doc.id)}
+        className="grid w-full gap-1.5 rounded p-3 pr-10 text-left disabled:cursor-default"
+        title={ready ? (selected ? 'Ask across all documents' : 'Ask about this document only') : undefined}
+      >
+        <span className="truncate font-mono text-xs text-ink">{doc.filename}</span>
+        <span className="flex flex-wrap items-center gap-2">
+          <StatusPill status={doc.status} />
+          {selected && <span className="font-mono text-label uppercase text-muted">Asking this one</span>}
+        </span>
+        <span className={`text-xs ${doc.status === 'failed' ? 'text-bad' : 'text-muted'}`}>{detail}</span>
+      </button>
+      <button
+        type="button"
+        onClick={() => setConfirming(true)}
+        aria-label={`Delete ${doc.filename}`}
+        className="absolute right-1.5 top-1.5 grid h-8 w-8 place-items-center rounded text-muted hover:bg-surface-2 hover:text-bad"
+      >
+        <svg aria-hidden viewBox="0 0 16 16" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.5">
+          <path d="M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.5 8.5h6l.5-8.5" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      </button>
+    </li>
   )
 }
 
 export default function Sidebar() {
-  const { documents, isLoading, refetch, deleteDocument } = useDocuments()
-  const { selectedDocId, setSelectedDocId, clearChat } = useChat()
-
-  const handleSelect = (doc: Document) => {
-    if (doc.status === 'completed') {
-      setSelectedDocId(doc.id === selectedDocId ? undefined : doc.id)
-      clearChat()
-    }
-  }
+  const { documents, isLoading, isError, refetch } = useDocuments()
+  const ready = documents.filter((d) => d.status === 'completed').length
 
   return (
-    <div className="bg-white rounded-xl shadow-sm p-4 space-y-4">
-      {/* Upload section moved here to be part of the left column */}
-      <div>
-        <UploadSection />
+    <div className="grid content-start gap-4 p-4">
+      <div className="flex items-baseline justify-between gap-2">
+        <h2 className="font-mono text-label uppercase text-muted">Library</h2>
+        {documents.length > 0 && (
+          <span className="font-mono text-xs tabular-nums text-muted">
+            {ready} of {documents.length} ready
+          </span>
+        )}
       </div>
 
-      <div className="flex items-center justify-between mb-4">
-        <h2 className="font-semibold text-gray-900">Documents</h2>
-        <button
-          onClick={() => refetch()}
-          className="text-sm text-blue-600 hover:text-blue-800"
-          title="Refresh"
-        >
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-          </svg>
-        </button>
-      </div>
+      <UploadSection />
 
       {isLoading ? (
-        <div className="flex justify-center py-8">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+        <p role="status" className="text-sm text-muted">
+          Loading your documents…
+        </p>
+      ) : isError ? (
+        <div className="grid gap-2 text-sm">
+          <p className="text-bad">Could not load your documents.</p>
+          <Button variant="ghost" size="sm" className="justify-self-start" onClick={() => refetch()}>
+            Try again
+          </Button>
         </div>
       ) : documents.length === 0 ? (
-        <p className="text-gray-500 text-sm text-center py-8">
-          No documents yet. Upload one to get started.
-        </p>
+        <div className="grid gap-1 border-t border-line pt-4 text-sm">
+          <p className="font-medium">No documents yet</p>
+          <p className="text-muted">
+            Add a contract, a paper or your notes. Once it shows Ready, ask about it in the chat.
+          </p>
+        </div>
       ) : (
-        <ul className="space-y-2">
+        <ul className="-mx-1 grid gap-1">
           {documents.map((doc) => (
-            <li
-              key={doc.id}
-              onClick={() => handleSelect(doc)}
-              className={`p-3 rounded-lg cursor-pointer transition border ${
-                selectedDocId === doc.id
-                  ? 'border-blue-500 bg-blue-50'
-                  : 'border-transparent hover:bg-gray-50'
-              } ${doc.status !== 'completed' ? 'opacity-60 cursor-not-allowed' : ''}`}
-            >
-              <div className="flex items-start justify-between gap-2">
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-gray-900 truncate">
-                    {doc.filename}
-                  </p>
-                  <div className="flex items-center gap-2 mt-1">
-                    <StatusBadge status={doc.status} />
-                    {doc.status === 'processing' && (
-                      <div className="flex items-center gap-2">
-                        <svg className="animate-spin h-4 w-4 text-yellow-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                        </svg>
-                        <ProcessingTimeline status={doc.status} />
-                      </div>
-                    )}
-                  </div>
-                  {doc.status === 'completed' && (
-                    <div className="mt-2">
-                      <DocumentStats docId={doc.id} />
-                    </div>
-                  )}
-                </div>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    if (confirm('Delete this document?')) {
-                      deleteDocument(doc.id)
-                    }
-                  }}
-                  className="text-gray-400 hover:text-red-600 p-1"
-                  title="Delete"
-                >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                  </svg>
-                </button>
-              </div>
-            </li>
+            <DocumentRow key={doc.id} doc={doc} />
           ))}
         </ul>
       )}

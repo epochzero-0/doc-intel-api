@@ -1,3 +1,10 @@
-// Re-export from context for backwards compatibility
-export { useChat } from '../context/ChatContext'
+import { useContext } from 'react'
+import { ChatContext } from '../context/chat'
 
+export function useChat() {
+  const context = useContext(ChatContext)
+  if (!context) {
+    throw new Error('useChat must be used within a ChatProvider')
+  }
+  return context
+}

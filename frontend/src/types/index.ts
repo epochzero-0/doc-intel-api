@@ -62,3 +62,22 @@ export interface SearchResult {
   document_id: number
   chunk_index: number
 }
+
+// One question and what came back for it.
+// 'answer' calls /documents/search and /documents/chat; 'passages' calls /documents/search only.
+export type AskMode = 'answer' | 'passages'
+
+export interface Turn {
+  id: number
+  query: string
+  mode: AskMode
+  documentId?: number
+  // In rank order. /documents/chat answers from the top 3 of these, numbered [1] to [3].
+  passages: SearchResult[] | null
+  answer?: string
+  sources?: ChatSource[]
+  status: 'working' | 'done' | 'error'
+  error?: string
+  // loaded from this browser's saved history, so it renders without the highlight sweep
+  restored?: boolean
+}

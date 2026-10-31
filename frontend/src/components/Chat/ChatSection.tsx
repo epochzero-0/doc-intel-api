@@ -1,124 +1,247 @@
-import { useState, useRef, useEffect } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useChat } from '../../hooks/useChat'
 import { useDocuments } from '../../hooks/useDocuments'
-import ChatMessage from './ChatMessage'
+import { ANSWER_CHUNKS } from '../../context/chat'
+import type { AskMode, Document, Turn } from '../../types'
+import AnswerText from './AnswerText'
+import Working from '../ui/Working'
+import { Button } from '../ui/Button'
 
-export default function ChatSection() {
+const MODES: { id: AskMode; label: string; hint: string }[] = [
+  { id: 'answer', label: 'Answer', hint: 'A written answer with citations, from the top 3 passages' },
+  { id: 'passages', label: 'Passages only', hint: 'Search results only. No model writes anything.' },
+]
+
+function TurnView({ turn, names, onShowPassages }: { turn: Turn; names: Map<number, string>; onShowPassages: () => void }) {
+  const { ask, retry, focusPassage, setActiveTurnId, activeTurnId, isWorking } = useChat()
+  const active = activeTurnId === turn.id
+  const scopeName = turn.documentId !== undefined ? names.get(turn.documentId) : undefined
+  const passageCount = turn.passages?.length ?? 0
+
+  return (
+    <article className="grid gap-3 animate-fade-in" aria-label={`Question: ${turn.query}`}>
+      <div className="grid justify-items-end gap-1">
+        <p className="max-w-[85%] rounded bg-surface-2 px-3 py-2 text-sm">{turn.query}</p>
+        <p className="font-mono text-label uppercase text-muted">
+          {turn.mode === 'answer' ? 'Answer' : 'Passages only'}
+          {scopeName ? ` · ${scopeName}` : ''}
+        </p>
+      </div>
+
+      {turn.status === 'working' && (
+        <Working>
+          {turn.passages === null
+            ? 'Searching your documents'
+            : turn.mode === 'answer'
+              ? `Writing an answer from the top ${ANSWER_CHUNKS} passages`
+              : 'Searching your documents'}
+        </Working>
+      )}
+
+      {turn.status === 'error' && (
+        <div role="alert" className="grid gap-2 rounded border border-bad/30 bg-bad-soft p-3 text-sm text-bad">
+          <p>{turn.error}</p>
+          <Button variant="ghost" size="sm" className="justify-self-start bg-paper" disabled={isWorking} onClick={() => retry(turn.id)}>
+            Try again
+          </Button>
+        </div>
+      )}
+
+      {turn.answer !== undefined && (
+        <div className="grid gap-3">
+          <div className="max-w-prose font-serif text-answer">
+            <AnswerText
+              text={turn.answer}
+              sweep={!turn.restored}
+              citationLabel={(n) => {
+                const p = turn.passages?.[n - 1]
+                return p ? `${names.get(p.document_id) ?? 'document'}, chunk ${p.chunk_index}` : `passage ${n}`
+              }}
+              onCitation={(n) => {
+                focusPassage(turn.id, n)
+                onShowPassages()
+              }}
+            />
+          </div>
+          {turn.sources && turn.sources.length > 0 && (
+            <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted">
+              <span className="font-mono text-label uppercase">Passages from</span>
+              {turn.sources.map((s) => (
+                <span key={s.document_id} className="break-all font-mono">
+                  {s.filename}
+                </span>
+              ))}
+            </p>
+          )}
+        </div>
+      )}
+
+      {turn.status === 'done' && turn.mode === 'passages' && passageCount === 0 && (
+        <p className="text-sm text-muted">No passages matched. Try other words, or ask across all documents.</p>
+      )}
+
+      {turn.status !== 'working' && (
+        <div className="flex flex-wrap gap-1">
+          {passageCount > 0 && (
+            <Button
+              variant={active ? 'ghost' : 'quiet'}
+              size="sm"
+              aria-pressed={active}
+              onClick={() => {
+                setActiveTurnId(turn.id)
+                onShowPassages()
+              }}
+            >
+              {`${passageCount} ${passageCount === 1 ? 'passage' : 'passages'}`}
+            </Button>
+          )}
+          <Button variant="quiet" size="sm" disabled={isWorking} onClick={() => ask(turn.query)}>
+            Ask again
+          </Button>
+        </div>
+      )}
+    </article>
+  )
+}
+
+function EmptyThread({ documents, onShowLibrary }: { documents: Document[]; onShowLibrary: () => void }) {
+  const ready = documents.filter((d) => d.status === 'completed').length
+  const processing = documents.some((d) => d.status === 'processing')
+
+  const [title, body] =
+    documents.length === 0
+      ? ['Upload a document to start', 'Add a PDF, DOCX or TXT file in the library. You can ask about it once it shows Ready.']
+      : ready === 0 && processing
+        ? ['Your document is processing', 'This usually takes under a minute. The box below unlocks when it shows Ready.']
+        : ready === 0
+          ? ['None of your documents could be read', 'Upload a file with selectable text. Scanned PDFs need OCR first.']
+          : [
+              'Ask a question',
+              'Answer mode writes a reply with citations; each one links to the passage it came from. Passages only shows the search results without a written answer.',
+            ]
+
+  return (
+    <div className="grid max-w-prose content-start gap-2 py-6">
+      <h3 className="font-serif text-xl font-medium">{title}</h3>
+      <p className="text-sm text-muted">{body}</p>
+      {ready === 0 && (
+        <Button variant="ghost" size="sm" className="mt-2 justify-self-start lg:hidden" onClick={onShowLibrary}>
+          Open the library
+        </Button>
+      )}
+    </div>
+  )
+}
+
+export default function ChatSection({ onShowPassages, onShowLibrary }: { onShowPassages: () => void; onShowLibrary: () => void }) {
   const [input, setInput] = useState('')
-  const messagesEndRef = useRef<HTMLDivElement>(null)
-  const { messages, isLoading, selectedDocId, setSelectedDocId, clearChat, searchThenChat } = useChat()
+  const endRef = useRef<HTMLDivElement>(null)
+  const { turns, ask, clear, isWorking, mode, setMode, documentId, setDocumentId } = useChat()
   const { documents } = useDocuments()
 
-  const completedDocs = documents.filter((d) => d.status === 'completed')
-
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }
+  const readyDocs = documents.filter((d) => d.status === 'completed')
+  const names = new Map(documents.map((d) => [d.id, d.filename]))
+  const canAsk = readyDocs.length > 0 && !isWorking
+  const last = turns[turns.length - 1]
 
   useEffect(() => {
-    scrollToBottom()
-  }, [messages])
+    endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
+  }, [turns.length, last?.status])
 
-  const handleSubmit = (e: React.FormEvent) => {
+  // A scoped document that disappears (deleted, or failed) falls back to all documents.
+  useEffect(() => {
+    if (documentId !== undefined && !readyDocs.some((d) => d.id === documentId)) setDocumentId(undefined)
+  }, [documentId, readyDocs, setDocumentId])
+
+  const submit = (e: React.FormEvent) => {
     e.preventDefault()
-    if (input.trim() && !isLoading) {
-      // perform search first (retrieval transparency) then chat
-      searchThenChat(input)
-      setInput('')
-    }
+    if (!input.trim() || !canAsk) return
+    ask(input)
+    setInput('')
   }
 
   return (
-    <div className="bg-white rounded-xl shadow-sm flex flex-col min-h-0 h-full">
-      {/* Header */}
-      <div className="p-4 border-b">
-        <div className="flex items-center justify-between">
-          <h2 className="font-semibold text-gray-900">Chat with Documents</h2>
-          {messages.length > 0 && (
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="flex flex-wrap items-center gap-2 border-b border-line px-4 py-3">
+        <label htmlFor="scope" className="sr-only">
+          Ask about
+        </label>
+        <select
+          id="scope"
+          value={documentId ?? ''}
+          onChange={(e) => setDocumentId(e.target.value ? Number(e.target.value) : undefined)}
+          disabled={readyDocs.length === 0}
+          className="h-8 min-w-0 max-w-full flex-1 basis-40 truncate rounded border border-edge bg-paper px-2 font-mono text-xs text-ink disabled:opacity-50"
+        >
+          <option value="">All documents ({readyDocs.length})</option>
+          {readyDocs.map((doc) => (
+            <option key={doc.id} value={doc.id}>
+              {doc.filename}
+            </option>
+          ))}
+        </select>
+
+        <div role="radiogroup" aria-label="Mode" className="flex rounded border border-line p-0.5">
+          {MODES.map((m) => (
             <button
-              onClick={clearChat}
-              className="text-sm text-gray-500 hover:text-gray-700"
+              key={m.id}
+              type="button"
+              role="radio"
+              aria-checked={mode === m.id}
+              title={m.hint}
+              onClick={() => setMode(m.id)}
+              className={`h-7 rounded-sm px-2.5 text-xs font-medium transition-colors ${
+                mode === m.id ? 'bg-ink text-paper' : 'text-muted hover:text-ink'
+              }`}
             >
-              Clear chat
+              {m.label}
             </button>
-          )}
+          ))}
         </div>
 
-        {/* Document Selector */}
-        <div className="mt-3">
-          <select
-            value={selectedDocId || ''}
-            onChange={(e) => {
-              const val = e.target.value
-              setSelectedDocId(val ? Number(val) : undefined)
-              clearChat()
-            }}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-          >
-            <option value="">All documents</option>
-            {completedDocs.map((doc) => (
-              <option key={doc.id} value={doc.id}>
-                {doc.filename}
-              </option>
-            ))}
-          </select>
-        </div>
+        {turns.length > 0 && (
+          <Button variant="quiet" size="sm" onClick={clear} disabled={isWorking}>
+            Clear
+          </Button>
+        )}
       </div>
 
-      {/* Messages */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-4 min-h-0">
-        {messages.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-full text-gray-500">
-            <svg className="w-12 h-12 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-            </svg>
-            <p className="text-center">
-              {completedDocs.length === 0
-                ? 'Upload a document to start chatting'
-                : 'Ask a question about your documents'}
-            </p>
-          </div>
+      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4" aria-live="polite">
+        {turns.length === 0 ? (
+          <EmptyThread documents={documents} onShowLibrary={onShowLibrary} />
         ) : (
-          messages.map((msg, idx) => <ChatMessage key={idx} message={msg} />)
-        )}
-
-        {isLoading && (
-          <div className="flex items-center gap-2 text-gray-500">
-            <div className="flex space-x-1">
-              <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
-              <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
-              <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
-            </div>
-            <span className="text-sm">Thinking...</span>
+          <div className="grid gap-8">
+            {turns.map((t) => (
+              <TurnView key={t.id} turn={t} names={names} onShowPassages={onShowPassages} />
+            ))}
           </div>
         )}
-
-        <div ref={messagesEndRef} />
+        <div ref={endRef} />
       </div>
 
-      {/* Input */}
-      <form onSubmit={handleSubmit} className="p-4 border-t">
-        <div className="flex gap-2">
-          <input
-            type="text"
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            placeholder={
-              completedDocs.length === 0
-                ? 'Upload a document first...'
-                : 'Ask a question...'
-            }
-            disabled={completedDocs.length === 0 || isLoading}
-            className="flex-1 px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 disabled:cursor-not-allowed"
-          />
-          <button
-            type="submit"
-            disabled={!input.trim() || completedDocs.length === 0 || isLoading}
-            className="px-6 py-3 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            Send
-          </button>
-        </div>
+      <form onSubmit={submit} className="flex gap-2 border-t border-line p-3 sm:p-4">
+        <label htmlFor="question" className="sr-only">
+          Your question
+        </label>
+        <input
+          id="question"
+          type="text"
+          autoComplete="off"
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          disabled={readyDocs.length === 0}
+          placeholder={
+            readyDocs.length === 0
+              ? 'Upload a document first'
+              : documentId !== undefined
+                ? `Ask about ${names.get(documentId)}`
+                : 'Ask across all your documents'
+          }
+          className="h-11 min-w-0 flex-1 rounded border border-edge bg-paper px-3 text-base text-ink placeholder:text-muted hover:border-ink focus:outline-none focus-visible:outline-2 disabled:cursor-not-allowed disabled:opacity-60"
+        />
+        <Button type="submit" size="md" className="h-11" disabled={!input.trim() || !canAsk}>
+          {mode === 'answer' ? 'Ask' : 'Search'}
+        </Button>
       </form>
     </div>
   )

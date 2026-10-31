@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
 import { authApi } from '../api/auth'
+import { errorMessage } from '../api/errors'
 import type { User } from '../types'
 
 export function useAuth() {
@@ -26,24 +27,15 @@ export function useAuth() {
       localStorage.setItem('access_token', data.access_token)
       setIsAuthenticated(true)
       queryClient.invalidateQueries({ queryKey: ['user'] })
-      toast.success('Login successful!')
       navigate('/app')
-    },
-    onError: (error: any) => {
-      const message = error.response?.data?.detail || 'Login failed'
-      toast.error(message)
     },
   })
 
   const registerMutation = useMutation({
     mutationFn: authApi.register,
-    onSuccess: () => {
-      toast.success('Registration successful! Please login.')
-      navigate('/login')
-    },
-    onError: (error: any) => {
-      const message = error.response?.data?.detail || 'Registration failed'
-      toast.error(message)
+    onSuccess: (user) => {
+      toast.success('Account created. Sign in to continue.')
+      navigate('/login', { state: { email: user.email } })
     },
   })
 
@@ -52,7 +44,7 @@ export function useAuth() {
     setIsAuthenticated(false)
     queryClient.clear()
     navigate('/login')
-    toast.success('Logged out successfully')
+    toast.success('Signed out')
   }, [navigate, queryClient])
 
   useEffect(() => {
@@ -69,5 +61,9 @@ export function useAuth() {
     logout,
     isLoginLoading: loginMutation.isPending,
     isRegisterLoading: registerMutation.isPending,
+    loginError: loginMutation.error ? errorMessage(loginMutation.error, 'Sign in failed. Try again.') : null,
+    registerError: registerMutation.error
+      ? errorMessage(registerMutation.error, 'Could not create the account. Try again.')
+      : null,
   }
 }

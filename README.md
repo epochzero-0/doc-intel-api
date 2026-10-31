@@ -71,13 +71,14 @@ Open the app (Vite will show the local URL). The frontend will call the backend 
 
 ## What the frontend provides (implemented features)
 
-- Retrieval Inspector: every user query triggers `/documents/search` first and shows the top matches (preview snippets, heuristic relevance bars) before calling `/documents/chat` — makes RAG transparent.
-- Document Intelligence Dashboard: per‑document analytics stored in `localStorage` keyed by `doc_stats_<id>` (times queried, last used, successes, favorite). These are surfaced in `DocumentStats`.
-- Processing Visualizer: `ProcessingTimeline` shows ingestion stages derived from the document `status` field.
-- Chat UX upgrades: conversation threads, citation rendering (e.g., turns like "... [1]") and a source drawer listing filenames.
-- Search Mode UI: three UI modes (Semantic / RAG / Strict Document) — UI-only switcher (no backend changes).
+- Passages panel: every question calls `/documents/search` alongside `/documents/chat` and lists the returned chunks in rank order. The API returns order, not scores, so the panel shows rank only. The top 3 are marked as sent to the model, because `/documents/chat` answers from exactly those.
+- Citations: `[n]` in an answer is passage n. Clicking it opens that passage, and each cited sentence is highlighted.
+- Two modes: Answer (search and chat) and Passages only (search, no model call).
+- Asking about one document: `/documents/search` ignores `document_id`, so a scoped search fetches 40 results and filters them on the client, keeping the backend's order.
+- Document states: processing (the list polls until it changes), ready, and failed with a reason. A file with no extractable text fails.
+- Chat history and per-document usage counts are kept in `localStorage` per account (`chat_history_<userId>`, `doc_stats_<id>`). The API stores neither.
 
-Notes: all enhancements are client-side only — no backend endpoints were added or modified.
+Design tokens (colours, fonts, radius, shadow, motion) live in `frontend/tailwind.config.js`, which replaces Tailwind's palette. Motion is CSS-only and respects `prefers-reduced-motion`.
 
 ---
 

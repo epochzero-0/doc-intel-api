@@ -20,7 +20,15 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
         <App />
-        <Toaster position="top-right" />
+        <Toaster
+          position="top-center"
+          containerStyle={{ top: 64 }}
+          toastOptions={{
+            className: '!rounded !bg-ink !text-paper !text-sm !font-sans !shadow-float !max-w-sm',
+            success: { icon: null },
+            error: { icon: null, className: '!rounded !bg-bad !text-paper !text-sm !font-sans !shadow-float !max-w-sm' },
+          }}
+        />
       </BrowserRouter>
     </QueryClientProvider>
   </React.StrictMode>,

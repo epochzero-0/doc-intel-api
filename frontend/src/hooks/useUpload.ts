@@ -1,75 +1,61 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
 import { documentsApi } from '../api/documents'
+import { errorMessage } from '../api/errors'
 import type { Document } from '../types'
 
-interface UploadingDoc {
-  id: number
-  filename: string
-  status: 'processing' | 'completed' | 'failed'
-}
+export const ACCEPTED = ['.pdf', '.docx', '.txt']
 
+// Uploads a file, then polls GET /documents/{id}/status until it leaves 'processing'.
 export function useUpload() {
   const queryClient = useQueryClient()
-  const [uploadingDocs, setUploadingDocs] = useState<UploadingDoc[]>([])
+  const [watching, setWatching] = useState<{ id: number; filename: string }[]>([])
 
   const uploadMutation = useMutation({
     mutationFn: documentsApi.upload,
     onSuccess: (data: Document) => {
-      setUploadingDocs((prev) => [
-        ...prev,
-        { id: data.id, filename: data.filename, status: 'processing' },
-      ])
+      setWatching((prev) => [...prev, { id: data.id, filename: data.filename }])
       queryClient.invalidateQueries({ queryKey: ['documents'] })
-      toast.success(`Uploading ${data.filename}...`)
     },
-    onError: (error: any) => {
-      const message = error.response?.data?.detail || 'Upload failed'
-      toast.error(message)
+    onError: (error) => {
+      toast.error(errorMessage(error, 'Upload failed. Try again.'))
     },
   })
 
-  // Poll for status updates
   useEffect(() => {
-    const processingDocs = uploadingDocs.filter((d) => d.status === 'processing')
-    if (processingDocs.length === 0) return
+    if (watching.length === 0) return
 
     const interval = setInterval(async () => {
-      for (const doc of processingDocs) {
+      for (const doc of watching) {
         try {
-          const status = await documentsApi.getStatus(doc.id)
-          if (status.status !== 'processing') {
-            setUploadingDocs((prev) =>
-              prev.map((d) =>
-                d.id === doc.id ? { ...d, status: status.status } : d
-              )
-            )
-            queryClient.invalidateQueries({ queryKey: ['documents'] })
-            
-            if (status.status === 'completed') {
-              toast.success(`${doc.filename} is ready!`)
-            } else if (status.status === 'failed') {
-              toast.error(`${doc.filename} processing failed`)
-            }
-          }
-        } catch (error) {
-          console.error('Failed to fetch status:', error)
+          const { status } = await documentsApi.getStatus(doc.id)
+          if (status === 'processing') continue
+          setWatching((prev) => prev.filter((d) => d.id !== doc.id))
+          queryClient.invalidateQueries({ queryKey: ['documents'] })
+          if (status === 'completed') toast.success(`${doc.filename} is ready`)
+          else toast.error(`${doc.filename} could not be processed`)
+        } catch {
+          // a missed poll is retried on the next tick
         }
       }
     }, 3000)
 
     return () => clearInterval(interval)
-  }, [uploadingDocs, queryClient])
+  }, [watching, queryClient])
 
-  const clearCompleted = useCallback(() => {
-    setUploadingDocs((prev) => prev.filter((d) => d.status === 'processing'))
-  }, [])
+  const upload = (file: File) => {
+    const ext = file.name.slice(file.name.lastIndexOf('.')).toLowerCase()
+    if (!ACCEPTED.includes(ext)) {
+      toast.error(`${file.name} is not a PDF, DOCX or TXT file.`)
+      return
+    }
+    uploadMutation.mutate(file)
+  }
 
   return {
-    upload: uploadMutation.mutate,
+    upload,
     isUploading: uploadMutation.isPending,
-    uploadingDocs,
-    clearCompleted,
+    uploadingName: uploadMutation.isPending ? uploadMutation.variables?.name : undefined,
   }
 }
