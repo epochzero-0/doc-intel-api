@@ -88,23 +88,24 @@ export function ChatProvider({ userId, children }: { userId?: number; children: 
 
   const run = useCallback(
     (turn: Turn) => {
-      const search = searchPassages(turn.query, turn.documentId)
-        .then((passages) => patch(turn.id, { passages }))
-        .catch((e) => {
-          patch(turn.id, { passages: [] })
-          throw e
-        })
+      const search = () =>
+        searchPassages(turn.query, turn.documentId)
+          .then((passages) => patch(turn.id, { passages }))
+          .catch((e) => {
+            patch(turn.id, { passages: [] })
+            throw e
+          })
 
       const work =
         turn.mode === 'passages'
-          ? search
-          : Promise.all([
-              search.catch(() => undefined), // the answer can still succeed without the side panel
-              chatApi.chat({ query: turn.query, document_id: turn.documentId }).then((res) => {
-                patch(turn.id, { answer: res.answer, sources: res.metadata.sources })
-                recordUse(res.metadata.sources.map((s) => s.document_id))
-              }),
-            ])
+          ? search()
+          : chatApi.chat({ query: turn.query, document_id: turn.documentId }).then(async (res) => {
+              const used = res.metadata.chunks
+              patch(turn.id, { answer: res.answer, sources: res.metadata.sources, ...(used && { passages: used }) })
+              recordUse(res.metadata.sources.map((s) => s.document_id))
+              // An API build without metadata.chunks: show search results instead; the panel can fail alone.
+              if (!used) await search().catch(() => undefined)
+            })
 
       work
         .then(() => patch(turn.id, { status: 'done' }))

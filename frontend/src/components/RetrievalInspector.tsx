@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState } from 'react'
 import { useChat } from '../hooks/useChat'
 import { useDocuments } from '../hooks/useDocuments'
-import { ANSWER_CHUNKS } from '../context/chat'
-import type { SearchResult } from '../types'
+import type { Passage as PassageT } from '../types'
 import Highlighted from './Passages/Highlighted'
 import Working from './ui/Working'
 
-function Passage({ p, rank, query, name, sent, focused }: { p: SearchResult; rank: number; query: string; name: string; sent: boolean; focused: boolean }) {
+const REASON_LABEL = { opening: 'Start of document', match: 'Matched' } as const
+
+function Passage({ p, rank, query, name, focused }: { p: PassageT; rank: number; query: string; name: string; focused: boolean }) {
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLLIElement>(null)
 
@@ -23,12 +24,12 @@ function Passage({ p, rank, query, name, sent, focused }: { p: SearchResult; ran
       id={`passage-${rank}`}
       className={`grid grid-cols-[1.5rem_1fr] gap-x-2 border-b border-line py-3 transition-colors last:border-0 ${focused ? 'bg-hl-soft/60' : ''}`}
     >
-      <span className={`pt-0.5 text-right font-mono text-xs ${sent ? 'text-ink' : 'text-muted'}`}>{rank}</span>
+      <span className="pt-0.5 text-right font-mono text-xs text-muted">{rank}</span>
       <div className="grid min-w-0 gap-1.5 pr-1">
         <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5">
           <span className="truncate font-mono text-xs text-ink">{name}</span>
           <span className="font-mono text-xs text-muted">chunk {p.chunk_index}</span>
-          {sent && <span className="font-mono text-label uppercase text-cite">Sent to model</span>}
+          {p.reason && <span className="font-mono text-label uppercase text-cite">{REASON_LABEL[p.reason]}</span>}
         </div>
         <p className={`whitespace-pre-wrap break-words text-sm leading-relaxed ${open ? '' : 'line-clamp-4'}`}>
           <Highlighted text={p.content} query={query} />
@@ -81,14 +82,14 @@ export default function RetrievalInspector() {
                 rank={i + 1}
                 query={turn.query}
                 name={names.get(p.document_id) ?? `Document ${p.document_id}`}
-                sent={turn.mode === 'answer' && i < ANSWER_CHUNKS}
                 focused={focusedRank === i + 1}
               />
             ))}
           </ol>
           <p className="border-t border-line pt-3 text-xs leading-relaxed text-muted">
-            Ranked by vector similarity to your question. The API returns the order, not a score.
-            {turn.mode === 'answer' && ` The answer was written from the top ${ANSWER_CHUNKS}, numbered as its citations.`}{' '}
+            {turn.passages.some((p) => p.reason)
+              ? 'These are the passages the answer was written from, numbered as its citations. Matched ones are ranked by vector similarity to your question; when you ask about one document, its first passages are included too.'
+              : 'Ranked by vector similarity to your question. The API returns the order, not a score.'}{' '}
             Yellow words appear in your question.
           </p>
         </>

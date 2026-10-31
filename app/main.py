@@ -13,7 +13,7 @@ import uuid
 from fastapi import UploadFile, File
 from app.processing.embedder import chunk_text, get_embedding
 from app.processing.parser import extract_text
-from app.processing.search import find_relevant_chunks, generate_answer
+from app.processing.search import find_relevant_chunks, generate_answer, select_context
 from app.storage import make_storage
 from fastapi import BackgroundTasks
 
@@ -246,17 +246,18 @@ def chat_with_docs(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user)
 ):
-    # 1. get the vector and find chunks
+    # 1. get the vector and pick the chunks to answer from
     query_vector = get_embedding(search_data.query)
-    chunks = find_relevant_chunks(
-        db, 
-        query_vector, 
-        user_id=current_user.id, 
+    picked = select_context(
+        db,
+        query_vector,
+        user_id=current_user.id,
         doc_id=search_data.document_id
     )
-    
+    chunks = [c for c, _ in picked]
+
     if not chunks:
-        return {"answer": "I couldn't find any relevant information in your documents.", "metadata": {"sources": []}}
+        return {"answer": "I couldn't find any relevant information in your documents.", "metadata": {"total_chunks_found": 0, "sources": [], "chunks": []}}
         
     # 2. generate AI Answer with Citations
     answer = generate_answer(search_data.query, chunks)
@@ -278,6 +279,11 @@ def chat_with_docs(
         "answer": answer,
         "metadata": {
             "total_chunks_found": len(chunks),
-            "sources": source_metadata
+            "sources": source_metadata,
+            # exactly what the model saw; citation [n] is chunks[n-1]
+            "chunks": [
+                {"document_id": c.document_id, "chunk_index": c.chunk_index, "content": c.content, "reason": reason}
+                for c, reason in picked
+            ]
         }
     }

@@ -19,6 +19,3 @@ export interface ChatContextType {
 }
 
 export const ChatContext = createContext<ChatContextType | null>(null)
-
-// /documents/chat always answers from this many chunks (the backend's default limit).
-export const ANSWER_CHUNKS = 3

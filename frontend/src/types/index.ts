@@ -46,9 +46,20 @@ export interface ChatSource {
   filename: string
 }
 
+// A chunk the model answered from. 'opening' chunks are a scoped document's first chunks, sent so
+// questions about the whole document can be answered; 'match' chunks come from similarity search.
+export interface UsedChunk {
+  document_id: number
+  chunk_index: number
+  content: string
+  reason: 'opening' | 'match'
+}
+
 export interface ChatMetadata {
   total_chunks_found: number
   sources: ChatSource[]
+  // in citation order: [n] is chunks[n-1]. Absent from API builds before this field existed.
+  chunks?: UsedChunk[]
 }
 
 export interface ChatResponse {
@@ -64,16 +75,19 @@ export interface SearchResult {
 }
 
 // One question and what came back for it.
-// 'answer' calls /documents/search and /documents/chat; 'passages' calls /documents/search only.
+// 'answer' calls /documents/chat; 'passages' calls /documents/search only.
 export type AskMode = 'answer' | 'passages'
+
+export type Passage = SearchResult & { reason?: UsedChunk['reason'] }
 
 export interface Turn {
   id: number
   query: string
   mode: AskMode
   documentId?: number
-  // In rank order. /documents/chat answers from the top 3 of these, numbered [1] to [3].
-  passages: SearchResult[] | null
+  // Answer mode: the chunks the model answered from, in citation order.
+  // Passages mode: search results in rank order.
+  passages: Passage[] | null
   answer?: string
   sources?: ChatSource[]
   status: 'working' | 'done' | 'error'

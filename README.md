@@ -71,8 +71,9 @@ Open the app (Vite will show the local URL). The frontend will call the backend 
 
 ## What the frontend provides (implemented features)
 
-- Passages panel: every question calls `/documents/search` alongside `/documents/chat` and lists the returned chunks in rank order. The API returns order, not scores, so the panel shows rank only. The top 3 are marked as sent to the model, because `/documents/chat` answers from exactly those.
-- Citations: `[n]` in an answer is passage n. Clicking it opens that passage, and each cited sentence is highlighted.
+- Passages panel: in Answer mode it lists `metadata.chunks` from `/documents/chat`, the exact chunks the model answered from, each marked Start of document or Matched. In Passages only mode it lists `/documents/search` results in rank order. The API returns order, not scores, so the panel shows no scores.
+- Citations: `[n]` in an answer is `metadata.chunks[n-1]`. Clicking it opens that passage, and each cited sentence is highlighted.
+- Whole-document questions: when a question is scoped to one document, `/documents/chat` sends that document's first 2 chunks ahead of the 3 closest matches, so "what is this document about?" has the title and purpose to work from.
 - Two modes: Answer (search and chat) and Passages only (search, no model call).
 - Asking about one document: `/documents/search` ignores `document_id`, so a scoped search fetches 40 results and filters them on the client, keeping the backend's order.
 - Document states: processing (the list polls until it changes), ready, and failed with a reason. A file with no extractable text fails.

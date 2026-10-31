@@ -19,6 +19,27 @@ def find_relevant_chunks(db: Session, query_vector: list, user_id: int, doc_id: 
     
     return results
 
+# The opening chunks of a document usually hold its title and purpose, which similarity search
+# rarely surfaces for questions about the document as a whole ("what is this about?").
+OPENING_CHUNKS = 2
+MATCHED_CHUNKS = 3
+
+def opening_chunks(db: Session, user_id: int, doc_id: int, n: int = OPENING_CHUNKS):
+    return db.query(models.Chunk).join(models.Document).filter(
+        models.Document.user_id == user_id,
+        models.Document.status == "completed",
+        models.Chunk.document_id == doc_id,
+        models.Chunk.chunk_index < n,
+    ).order_by(models.Chunk.chunk_index).all()
+
+def select_context(db: Session, query_vector: list, user_id: int, doc_id: int = None):
+    """Chunks to answer from, in the order they are numbered for citations, each tagged with why
+    it was picked. A question about one document gets that document's opening chunks first."""
+    matched = find_relevant_chunks(db, query_vector, user_id=user_id, doc_id=doc_id, limit=MATCHED_CHUNKS)
+    openers = opening_chunks(db, user_id, doc_id) if doc_id else []
+    opener_ids = {c.id for c in openers}
+    return [(c, "opening") for c in openers] + [(c, "match") for c in matched if c.id not in opener_ids]
+
 def generate_answer(query: str, relevant_chunks: list):
     # create a numbered list of context pieces with their source filenames
     context_parts = []
@@ -34,8 +55,11 @@ def generate_answer(query: str, relevant_chunks: list):
     
     STRICT RULES:
     1. At the end of sentences that use information from a source, cite it like [1] or [2].
-    2. If the answer isn't in the context, say "I don't have enough information in your documents."
-    3. List the source filenames at the very bottom under a "Sources:" heading.
+    2. If the question asks what a document is, what it covers, or for a summary, describe it from
+       the context and say you are working from excerpts. Cite the sources you used.
+    3. For any other question, if the answer isn't in the context, say "I don't have enough
+       information in your documents."
+    4. List the source filenames at the very bottom under a "Sources:" heading.
 
     Context:
     {context_text}

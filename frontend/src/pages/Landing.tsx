@@ -33,7 +33,7 @@ const steps = [
   },
   {
     title: 'Answer',
-    body: "GPT-4o writes from the top three chunks only and cites them as [1], [2] and [3]. If they don't hold the answer, it says so.",
+    body: "GPT-4o writes from the three closest chunks, plus the document's opening when you ask about one document, and cites each by number. If they don't hold the answer, it says so.",
   },
 ]
 

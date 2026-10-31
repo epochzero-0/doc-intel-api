@@ -1,14 +1,13 @@
 import { useEffect, useRef, useState } from 'react'
 import { useChat } from '../../hooks/useChat'
 import { useDocuments } from '../../hooks/useDocuments'
-import { ANSWER_CHUNKS } from '../../context/chat'
 import type { AskMode, Document, Turn } from '../../types'
 import AnswerText from './AnswerText'
 import Working from '../ui/Working'
 import { Button } from '../ui/Button'
 
 const MODES: { id: AskMode; label: string; hint: string }[] = [
-  { id: 'answer', label: 'Answer', hint: 'A written answer with citations, from the top 3 passages' },
+  { id: 'answer', label: 'Answer', hint: 'A written answer with citations to the passages it used' },
   { id: 'passages', label: 'Passages only', hint: 'Search results only. No model writes anything.' },
 ]
 
@@ -29,13 +28,7 @@ function TurnView({ turn, names, onShowPassages }: { turn: Turn; names: Map<numb
       </div>
 
       {turn.status === 'working' && (
-        <Working>
-          {turn.passages === null
-            ? 'Searching your documents'
-            : turn.mode === 'answer'
-              ? `Writing an answer from the top ${ANSWER_CHUNKS} passages`
-              : 'Searching your documents'}
-        </Working>
+        <Working>{turn.mode === 'answer' ? 'Finding passages and writing the answer' : 'Searching your documents'}</Working>
       )}
 
       {turn.status === 'error' && (
