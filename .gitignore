@@ -9,6 +9,9 @@ venv/
 uploads/
 *.db
 
+# infra/ scratch files (user-data, CloudFront config)
+infra/.*.tmp*
+
 # OS files
 Thumbs.db
 .DS_Store

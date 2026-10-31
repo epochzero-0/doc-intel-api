@@ -94,7 +94,7 @@ Notes: all enhancements are client-side only — no backend endpoints were added
   - `POST /documents/chat` — RAG answer (returns `answer` and `metadata.sources`).
 
 - Key backend concepts
-  - Uploads are saved to the top-level `uploads/` folder (created by the API).
+  - Uploads are stored under a generated key `<user_id>/<uuid><ext>`, in the S3 bucket named by `S3_BUCKET`, or the local `uploads/` folder (`UPLOAD_DIR`) when it is unset. The client's filename is kept only in the database, for display.
   - Document ingestion runs in a background worker; embeddings are generated and stored in Postgres `pgvector`.
   - The backend returns metadata about sources which the frontend renders into citations and the Source Drawer.
 
@@ -148,6 +148,7 @@ Used by FastAPI to connect to infrastructure.
 ```
 DATABASE_URL=postgresql://user:password@host:5432/dbname
 OPENAI_API_KEY=sk-xxxxxxxx
+JWT_SECRET_KEY=   # openssl rand -hex 32; the API refuses to start without it
 ```
 
 > This file must never be committed to Git. Add it to `.gitignore`.
@@ -219,3 +220,107 @@ npm run dev
 * **backend .env** → tells FastAPI how to reach Postgres and OpenAI
 * pgvector must be enabled once in the database
 * always run inside a Python virtual environment
+
+## Tests
+
+The tests run against a real Postgres with pgvector and mock every OpenAI call.
+
+```bash
+docker run -d --name docintel-testdb -e POSTGRES_USER=test -e POSTGRES_PASSWORD=test -e POSTGRES_DB=test -p 55432:5432 pgvector/pgvector:pg16
+pip install -r requirements-dev.txt
+pytest -q
+```
+
+`TEST_DATABASE_URL` overrides the default `postgresql://test:test@localhost:55432/test`. The tests never read `.env`'s database.
+
+What they pin down:
+
+- a token signed with any key but the server's, including the old hardcoded `"KEY"`, gets 401
+- user B can't list, search, chat over, check the status of, or delete user A's document
+- an upload named `../evil.txt` is stored inside the upload store, and two uploads with the same name keep separate files
+- the S3 backend uploads, reads back for processing, and deletes (against `moto`)
+
+CI (`.github/workflows/ci.yml`) runs them on every push and pull request to `main`.
+
+## Deployment (AWS, ap-southeast-1)
+
+```
+Vercel frontend ──HTTPS──> CloudFront ──HTTP, port 80──> EC2 t4g.micro
+                                                          ├─ api container (ECR image, 2 gunicorn workers)
+                                                          └─ db container (pgvector/pgvector:pg16, named volume)
+                                                               │
+                                     S3: uploads/ + nightly backups/ <┘   SSM: secrets   CloudWatch: logs
+```
+
+| Piece | What it does |
+|---|---|
+| ECR | Holds the API image, tagged with the commit SHA. Keeps the last 5. |
+| EC2 t4g.micro | Runs the API and Postgres containers. 1 GB RAM plus 1 GB swap. CPU credits set to `standard`, so it can't bill for bursting. |
+| Postgres container | pgvector on a named Docker volume, on a Docker network with no published port. Only the API container can reach it. |
+| S3 | Private bucket. `uploads/` holds documents; `backups/` holds a nightly `pg_dump`, expired after 14 days. |
+| SSM Parameter Store | `DATABASE_URL`, `JWT_SECRET_KEY`, `OPENAI_API_KEY`, `POSTGRES_PASSWORD` as SecureStrings. The container reads `/docintel/*` at start through the instance role. Nothing secret is in the image. |
+| CloudFront | Gives the API HTTPS, so the Vercel frontend can call it. Caching is off and every header, `Authorization` included, is forwarded. |
+| CloudWatch Logs | `/docintel/api`, streams `api` and `db`, 14-day retention. |
+| IAM | The instance role reads only `/docintel/*` and this bucket's `uploads/` and `backups/`, and pulls only this ECR repo. The security group admits port 80 from CloudFront's address ranges and nothing else; there is no SSH. |
+
+The CloudFront to EC2 hop is plain HTTP. Encrypting it needs a domain and a certificate on the instance.
+
+### How a push reaches production
+
+1. Push to `main`. The `test` job runs pytest against a pgvector service container.
+2. If it passes, `deploy` runs on an arm64 runner. It trades GitHub's OIDC token for short-lived credentials on the `docintel-github-deploy` role; only `main` of this repo can assume it, and no AWS keys are stored in GitHub.
+3. It builds the image, tags it with the commit SHA and pushes it to ECR.
+4. It runs `/opt/docintel/deploy.sh <image>` on the instance through SSM `send-command`: pull, remove the old container, start the new one, wait for `/` to answer.
+5. It fetches `/` through CloudFront and fails unless it gets a 200.
+
+`deploy` is skipped until the repo variables `AWS_DEPLOY_ROLE_ARN`, `ECR_REGISTRY`, `EC2_INSTANCE_ID` and `API_URL` exist. `infra/setup.sh github` sets them.
+
+### Cost
+
+On-demand prices for ap-southeast-1, from AWS's price list on 1 Nov 2026:
+
+| Item | Rate | Per month |
+|---|---|---|
+| EC2 t4g.micro | US$0.0106/hour | US$7.74 |
+| Elastic IP (public IPv4, in use) | US$0.005/hour | US$3.65 |
+| EBS gp3, 16 GB | US$0.096/GB-month | US$1.54 |
+| ECR, about 0.5 GB | US$0.10/GB-month | US$0.05 |
+| S3, under 1 GB | | under US$0.05 |
+| CloudFront | always-free 1 TB and 10M requests a month | US$0 |
+| CloudWatch Logs | under the 5 GB free ingestion | US$0 |
+| SSM standard parameters, Budgets | free | US$0 |
+| **Total** | | **about US$13** |
+
+An account on AWS's Free plan pays this out of its sign-up credits until they run out or six months pass. OpenAI usage is billed separately by OpenAI.
+
+### Setting it up
+
+Prerequisites: AWS CLI v2 logged in to the account (`aws configure sso` or `aws login`), `gh` logged in, Git Bash.
+
+```bash
+infra/setup.sh budget you@example.com   # US$5/month budget, emails on actual and forecast overrun
+infra/setup.sh storage                  # ECR repo, S3 bucket, log group
+infra/setup.sh secrets                  # generates JWT and Postgres secrets, prompts for the OpenAI key
+infra/setup.sh iam                      # instance role
+infra/setup.sh instance                 # security group, EC2 (bootstraps Docker + Postgres), Elastic IP
+infra/setup.sh cdn                      # CloudFront distribution
+infra/setup.sh github                   # OIDC provider, deploy role, repo variables
+```
+
+Then push to `main` to deploy, and set the frontend's `VITE_API_URL` on Vercel to the CloudFront URL. The database starts empty.
+
+Shell on the instance: `aws ssm start-session --target <instance-id>`. Restore a backup: `aws s3 cp s3://<bucket>/backups/<file>.dump - | docker exec -i db pg_restore -U docintel -d docintel --clean`.
+
+### Teardown
+
+`infra/teardown.sh` deletes everything in this order, so the bill returns to zero:
+
+1. CloudFront distribution (disabled first, then deleted once that has deployed)
+2. EC2 instance, taking its volume and the database with it; then the Elastic IP
+3. Security group
+4. IAM instance profile and role, deploy role, GitHub OIDC provider
+5. ECR repository and images
+6. S3 bucket, with all uploads and backups (download `backups/` first if you want them)
+7. SSM parameters and the CloudWatch log group
+8. GitHub repo variables, which makes `deploy` skip again
+9. The budget
