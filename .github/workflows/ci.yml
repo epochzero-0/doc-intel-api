@@ -52,7 +52,7 @@ jobs:
       id-token: write # GitHub OIDC token, exchanged for short-lived AWS credentials
       contents: read
     env:
-      AWS_REGION: ap-southeast-1
+      AWS_REGION: ap-southeast-2
       IMAGE: ${{ vars.ECR_REGISTRY }}/docintel-api:${{ github.sha }}
     steps:
       - uses: actions/checkout@v5
@@ -60,7 +60,7 @@ jobs:
       - uses: aws-actions/configure-aws-credentials@v5
         with:
           role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
-          aws-region: ap-southeast-1
+          aws-region: ap-southeast-2
 
       - name: Build and push to ECR
         run: |

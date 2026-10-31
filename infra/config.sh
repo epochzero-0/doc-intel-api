@@ -1,5 +1,6 @@
 # Shared names for setup.sh and teardown.sh. Sourced, not run.
-export AWS_REGION=ap-southeast-1
+# The account's project setup only allows its selected region (plus us-east-1/us-west-2 for global services).
+export AWS_REGION=ap-southeast-2
 export AWS_DEFAULT_REGION=$AWS_REGION
 export AWS_PAGER=""
 set -o pipefail

@@ -1,6 +1,6 @@
 #!/bin/bash
-# Creates the AWS side of doc-intel in ap-southeast-1. Run from the repo root in Git Bash
-# after logging in (aws configure sso / aws login), one step at a time or "all":
+# Creates the AWS side of doc-intel in ap-southeast-2 (config.sh). Run from the repo root in
+# AWS CloudShell, or in Git Bash after `aws login`, one step at a time or "all":
 #
 #   infra/setup.sh budget you@example.com
 #   infra/setup.sh storage      # ECR repo, S3 bucket, log group

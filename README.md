@@ -242,7 +242,9 @@ What they pin down:
 
 CI (`.github/workflows/ci.yml`) runs them on every push and pull request to `main`.
 
-## Deployment (AWS, ap-southeast-1)
+## Deployment (AWS, ap-southeast-2)
+
+The account is on AWS's project-based setup, which only allows the project's selected region, Sydney.
 
 ```
 Vercel frontend ──HTTPS──> CloudFront ──HTTP, port 80──> EC2 t4g.micro
@@ -277,7 +279,7 @@ The CloudFront to EC2 hop is plain HTTP. Encrypting it needs a domain and a cert
 
 ### Cost
 
-On-demand prices for ap-southeast-1, from AWS's price list on 1 Nov 2026:
+On-demand prices for ap-southeast-2, from AWS's price list on 1 Nov 2026:
 
 | Item | Rate | Per month |
 |---|---|---|
