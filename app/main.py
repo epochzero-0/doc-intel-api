@@ -1,5 +1,6 @@
 from fastapi import FastAPI, Depends, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 from app.database import engine, Base, get_db
 from app import models, schemas, auth
@@ -7,6 +8,8 @@ from app.dependencies import get_current_user
 from fastapi.security import OAuth2PasswordRequestForm 
 import shutil
 import os
+import re
+import uuid
 from fastapi import UploadFile, File
 from app.processing.embedder import chunk_text, get_embedding
 from app.processing.parser import extract_text
@@ -31,6 +34,9 @@ def home():
 @app.on_event("startup")
 def startup_event():
     Base.metadata.create_all(bind=engine)
+    # create_all doesn't add columns to an existing table
+    with engine.begin() as conn:
+        conn.execute(text("ALTER TABLE documents ADD COLUMN IF NOT EXISTS storage_key VARCHAR"))
 
 @app.post("/auth/register", response_model=schemas.UserOut)
 def register(user_data: schemas.UserCreate, db: Session = Depends(get_db)):
@@ -133,6 +139,11 @@ UPLOAD_DIR = os.path.join(PROJECT_ROOT, "uploads")
 # ensure the uploads directory exists
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
+
+def safe_extension(filename: str | None) -> str:
+    ext = os.path.splitext((filename or "").replace("\\", "/").rsplit("/", 1)[-1])[1].lower()
+    return ext if re.fullmatch(r"\.[a-z0-9]{1,10}", ext) else ""
+
 @app.post("/documents/upload", response_model=schemas.DocumentOut)
 async def upload_document(
     background_tasks: BackgroundTasks, # 
@@ -140,16 +151,17 @@ async def upload_document(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user)
 ):
-    # 1. create file path
-    file_path = os.path.join(UPLOAD_DIR, f"{current_user.id}_{file.filename}")
-
-    # 2. save physical file 
+    # the client's filename never reaches the filesystem; only its extension does,
+    # because the parser picks a reader by extension
+    storage_key = f"{current_user.id}/{uuid.uuid4().hex}{safe_extension(file.filename)}"
+    file_path = os.path.join(UPLOAD_DIR, storage_key)
+    os.makedirs(os.path.dirname(file_path), exist_ok=True)
     with open(file_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
-    
-    # 6. save document Metadata (so we have a doc_id to work with)
+
     new_doc = models.Document(
         filename=file.filename,
+        storage_key=storage_key,
         user_id=current_user.id
     )
     db.add(new_doc)
@@ -204,9 +216,10 @@ def delete_document(
         raise HTTPException(status_code=404, detail="Document not found")
 
     # 2. delete the physical file from the 'uploads' folder
-    file_path = os.path.join(UPLOAD_DIR, f"{current_user.id}_{doc.filename}")
-    if os.path.exists(file_path):
-        os.remove(file_path)
+    if doc.storage_key:
+        file_path = os.path.join(UPLOAD_DIR, doc.storage_key)
+        if os.path.exists(file_path):
+            os.remove(file_path)
 
     # 3. delete from DB (this allso automatically deletes all related chunks)
     db.delete(doc)

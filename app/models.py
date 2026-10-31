@@ -19,7 +19,8 @@ class Document(Base):
     __tablename__ = "documents"
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"))
-    filename = Column(String, nullable=False)
+    filename = Column(String, nullable=False)  # the client's name, for display only
+    storage_key = Column(String, unique=True)  # "<user_id>/<uuid><ext>", where the file actually lives
     created_at = Column(DateTime, default=datetime.utcnow)
 
     status = Column(String, default="processing") # processing, completed, failed
