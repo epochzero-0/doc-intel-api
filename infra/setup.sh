@@ -8,7 +8,7 @@
 #   infra/setup.sh iam          # instance role
 #   infra/setup.sh instance     # security group, EC2, Elastic IP
 #   infra/setup.sh cdn          # CloudFront
-#   infra/setup.sh github       # OIDC provider, deploy role, GitHub repo variables
+#   infra/setup.sh github       # deploy user and its access key, prints the GitHub repo variables
 #
 # Only "instance" starts anything that bills by the hour.
 set -euo pipefail
@@ -168,21 +168,14 @@ EOF
 }
 
 step_github() {
-  local provider iid cf
-  provider=arn:aws:iam::$ACCOUNT_ID:oidc-provider/token.actions.githubusercontent.com
-  aws iam get-open-id-connect-provider --open-id-connect-provider-arn "$provider" >/dev/null 2>&1 || \
-    aws iam create-open-id-connect-provider --url https://token.actions.githubusercontent.com \
-      --client-id-list sts.amazonaws.com --thumbprint-list 6938fd4d98bab03faadb97b34396831e3780aea1 >/dev/null
-
-  # Only workflow runs on this repo's main branch can assume the role.
-  aws iam get-role --role-name "$DEPLOY_ROLE" >/dev/null 2>&1 || aws iam create-role --role-name "$DEPLOY_ROLE" \
-    --assume-role-policy-document "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",
-      \"Principal\":{\"Federated\":\"$provider\"},\"Action\":\"sts:AssumeRoleWithWebIdentity\",
-      \"Condition\":{\"StringEquals\":{\"token.actions.githubusercontent.com:aud\":\"sts.amazonaws.com\",
-        \"token.actions.githubusercontent.com:sub\":\"repo:$GH_REPO:ref:refs/heads/main\"}}}]}" >/dev/null
+  # This account type blocks IAM identity providers (iam:*Provider*), so GitHub OIDC is
+  # unavailable. The deploy job uses an IAM user's access key instead, scoped to pushing
+  # this one ECR repo and running commands on this one instance.
+  local iid cf
+  aws iam get-user --user-name "$DEPLOY_USER" >/dev/null 2>&1 || aws iam create-user --user-name "$DEPLOY_USER" >/dev/null
 
   iid=$(instance_id)
-  aws iam put-role-policy --role-name "$DEPLOY_ROLE" --policy-name "$APP-deploy" --policy-document "{
+  aws iam put-user-policy --user-name "$DEPLOY_USER" --policy-name "$APP-deploy" --policy-document "{
     \"Version\":\"2012-10-17\",\"Statement\":[
       {\"Effect\":\"Allow\",\"Action\":\"ecr:GetAuthorizationToken\",\"Resource\":\"*\"},
       {\"Effect\":\"Allow\",\"Action\":[\"ecr:BatchCheckLayerAvailability\",\"ecr:InitiateLayerUpload\",\"ecr:UploadLayerPart\",
@@ -194,11 +187,15 @@ step_github() {
       {\"Effect\":\"Allow\",\"Action\":\"ssm:GetCommandInvocation\",\"Resource\":\"*\"}]}"
 
   cf=$(aws cloudfront list-distributions --query "DistributionList.Items[?Comment=='$APP-api'].DomainName | [0]" --output text)
-  gh variable set AWS_DEPLOY_ROLE_ARN --repo "$GH_REPO" --body "arn:aws:iam::$ACCOUNT_ID:role/$DEPLOY_ROLE"
-  gh variable set ECR_REGISTRY --repo "$GH_REPO" --body "$ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com"
-  gh variable set EC2_INSTANCE_ID --repo "$GH_REPO" --body "$iid"
-  gh variable set API_URL --repo "$GH_REPO" --body "https://$cf"
-  echo "github: deploy role $DEPLOY_ROLE, repo variables set"
+  echo "github: deploy user $DEPLOY_USER ready. Repo variables to set:"
+  echo "  ECR_REGISTRY=$ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com"
+  echo "  EC2_INSTANCE_ID=$iid"
+  echo "  API_URL=https://$cf"
+  if [ "$(aws iam list-access-keys --user-name "$DEPLOY_USER" --query 'length(AccessKeyMetadata)' --output text)" = "0" ]; then
+    echo "Access key for the GitHub secrets AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY (shown once):"
+    aws iam create-access-key --user-name "$DEPLOY_USER" \
+      --query 'AccessKey.[AccessKeyId,SecretAccessKey]' --output text
+  fi
 }
 
 case "${1:-}" in

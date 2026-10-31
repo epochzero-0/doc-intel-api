@@ -19,5 +19,5 @@ BUDGET_USD=5
 ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
 BUCKET=$APP-$ACCOUNT_ID-$AWS_REGION
 INSTANCE_ROLE=$APP-instance
-DEPLOY_ROLE=$APP-github-deploy
+DEPLOY_USER=$APP-github-deploy
 SG_NAME=$APP-api

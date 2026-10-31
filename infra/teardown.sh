@@ -4,7 +4,7 @@
 # The S3 bucket holds the uploads and the nightly backups; download what you want first:
 #   aws s3 cp s3://<bucket>/backups/ ./backups --recursive
 set -uo pipefail # no -e: keep going past anything already deleted
-cd "$(dirname "$0")"
+cd "$(dirname "$0")" || exit 1
 . ./config.sh
 
 read -r -p "Delete all $APP resources in $AWS_REGION for account $ACCOUNT_ID? Type 'delete': " ok
@@ -38,17 +38,17 @@ alloc=$(aws ec2 describe-addresses --filters "Name=tag:Name,Values=$APP-api" --q
 sg=$(aws ec2 describe-security-groups --filters "Name=group-name,Values=$SG_NAME" --query 'SecurityGroups[0].GroupId' --output text)
 [ "$sg" != "None" ] && aws ec2 delete-security-group --group-id "$sg" && echo "deleted security group"
 
-# 4. IAM: instance profile and role, deploy role, OIDC provider.
+# 4. IAM: instance profile and role, deploy user and its access key.
 aws iam remove-role-from-instance-profile --instance-profile-name "$INSTANCE_ROLE" --role-name "$INSTANCE_ROLE" 2>/dev/null
 aws iam delete-instance-profile --instance-profile-name "$INSTANCE_ROLE" 2>/dev/null
 aws iam delete-role-policy --role-name "$INSTANCE_ROLE" --policy-name "$APP-app" 2>/dev/null
 aws iam detach-role-policy --role-name "$INSTANCE_ROLE" --policy-arn arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore 2>/dev/null
 aws iam delete-role --role-name "$INSTANCE_ROLE" 2>/dev/null && echo "deleted $INSTANCE_ROLE"
-aws iam delete-role-policy --role-name "$DEPLOY_ROLE" --policy-name "$APP-deploy" 2>/dev/null
-aws iam delete-role --role-name "$DEPLOY_ROLE" 2>/dev/null && echo "deleted $DEPLOY_ROLE"
-aws iam delete-open-id-connect-provider \
-  --open-id-connect-provider-arn "arn:aws:iam::$ACCOUNT_ID:oidc-provider/token.actions.githubusercontent.com" 2>/dev/null \
-  && echo "deleted GitHub OIDC provider"
+for k in $(aws iam list-access-keys --user-name "$DEPLOY_USER" --query 'AccessKeyMetadata[].AccessKeyId' --output text 2>/dev/null); do
+  aws iam delete-access-key --user-name "$DEPLOY_USER" --access-key-id "$k"
+done
+aws iam delete-user-policy --user-name "$DEPLOY_USER" --policy-name "$APP-deploy" 2>/dev/null
+aws iam delete-user --user-name "$DEPLOY_USER" 2>/dev/null && echo "deleted $DEPLOY_USER and its access key"
 
 # 5. ECR repository and its images.
 aws ecr delete-repository --repository-name "$ECR_REPO" --force >/dev/null 2>&1 && echo "deleted ECR $ECR_REPO"
@@ -63,9 +63,13 @@ done
 echo "deleted SSM parameters"
 aws logs delete-log-group --log-group-name "$LOG_GROUP" 2>/dev/null && echo "deleted log group"
 
-# 8. GitHub repo variables, so the deploy job goes back to skipping.
-for v in AWS_DEPLOY_ROLE_ARN ECR_REGISTRY EC2_INSTANCE_ID API_URL; do
+# 8. GitHub repo variables and secrets, so the deploy job goes back to skipping (needs gh; run
+#    these from your PC if teardown runs in CloudShell).
+for v in ECR_REGISTRY EC2_INSTANCE_ID API_URL; do
   gh variable delete "$v" --repo "$GH_REPO" 2>/dev/null
+done
+for s in AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY; do
+  gh secret delete "$s" --repo "$GH_REPO" 2>/dev/null
 done
 
 # 9. The budget last, so it watches the whole teardown.

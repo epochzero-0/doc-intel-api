@@ -43,13 +43,12 @@ jobs:
 
   deploy:
     needs: test
-    # Skipped until infra/setup.sh has set the repo variables.
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.AWS_DEPLOY_ROLE_ARN != ''
+    # Skipped until the repo variables from infra/setup.sh github exist.
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.EC2_INSTANCE_ID != ''
     # arm64 runner: the image runs on a Graviton (t4g) instance.
     runs-on: ubuntu-24.04-arm
     concurrency: deploy
     permissions:
-      id-token: write # GitHub OIDC token, exchanged for short-lived AWS credentials
       contents: read
     env:
       AWS_REGION: ap-southeast-2
@@ -57,9 +56,12 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      # Access key of the docintel-github-deploy IAM user: may push to the docintel-api ECR repo
+      # and run commands on the one instance, nothing else. (The account blocks OIDC providers.)
       - uses: aws-actions/configure-aws-credentials@v5
         with:
-          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ap-southeast-2
 
       - name: Build and push to ECR

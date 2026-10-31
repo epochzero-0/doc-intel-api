@@ -270,12 +270,12 @@ The CloudFront to EC2 hop is plain HTTP. Encrypting it needs a domain and a cert
 ### How a push reaches production
 
 1. Push to `main`. The `test` job runs pytest against a pgvector service container.
-2. If it passes, `deploy` runs on an arm64 runner. It trades GitHub's OIDC token for short-lived credentials on the `docintel-github-deploy` role; only `main` of this repo can assume it, and no AWS keys are stored in GitHub.
+2. If it passes, `deploy` runs on an arm64 runner. It authenticates as the `docintel-github-deploy` IAM user, whose access key is in the repo secrets `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY`. That user can push to the `docintel-api` ECR repo and run commands on the one instance, nothing else. GitHub OIDC would avoid a stored key, but this account type blocks IAM identity providers.
 3. It builds the image, tags it with the commit SHA and pushes it to ECR.
 4. It runs `/opt/docintel/deploy.sh <image>` on the instance through SSM `send-command`: pull, remove the old container, start the new one, wait for `/` to answer.
 5. It fetches `/` through CloudFront and fails unless it gets a 200.
 
-`deploy` is skipped until the repo variables `AWS_DEPLOY_ROLE_ARN`, `ECR_REGISTRY`, `EC2_INSTANCE_ID` and `API_URL` exist. `infra/setup.sh github` sets them.
+`deploy` is skipped until the repo variables `ECR_REGISTRY`, `EC2_INSTANCE_ID` and `API_URL` exist. `infra/setup.sh github` prints their values and the access key.
 
 ### Cost
 
@@ -297,7 +297,7 @@ An account on AWS's Free plan pays this out of its sign-up credits until they ru
 
 ### Setting it up
 
-Prerequisites: AWS CLI v2 logged in to the account (`aws configure sso` or `aws login`), `gh` logged in, Git Bash.
+Run these in AWS CloudShell (already signed in; the account's sign-in doesn't support `aws login`), with this repo's `infra/` folder copied there.
 
 ```bash
 infra/setup.sh budget you@example.com   # US$5/month budget, emails on actual and forecast overrun
@@ -306,7 +306,7 @@ infra/setup.sh secrets                  # generates JWT and Postgres secrets, pr
 infra/setup.sh iam                      # instance role
 infra/setup.sh instance                 # security group, EC2 (bootstraps Docker + Postgres), Elastic IP
 infra/setup.sh cdn                      # CloudFront distribution
-infra/setup.sh github                   # OIDC provider, deploy role, repo variables
+infra/setup.sh github                   # deploy user + access key; prints the repo variables
 ```
 
 Then push to `main` to deploy, and set the frontend's `VITE_API_URL` on Vercel to the CloudFront URL. The database starts empty.
@@ -320,7 +320,7 @@ Shell on the instance: `aws ssm start-session --target <instance-id>`. Restore a
 1. CloudFront distribution (disabled first, then deleted once that has deployed)
 2. EC2 instance, taking its volume and the database with it; then the Elastic IP
 3. Security group
-4. IAM instance profile and role, deploy role, GitHub OIDC provider
+4. IAM instance profile and role, deploy user and its access key
 5. ECR repository and images
 6. S3 bucket, with all uploads and backups (download `backups/` first if you want them)
 7. SSM parameters and the CloudWatch log group
