@@ -9,4 +9,3 @@ uploads
 infra
 docs
 **/__pycache__
-fly.toml
