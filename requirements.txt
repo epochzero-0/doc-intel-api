@@ -4,6 +4,7 @@ uvicorn[standard]==0.40.0
 gunicorn==23.0.0
 pydantic-settings
 python-dotenv==1.2.1
+boto3==1.43.123
 
 # Database
 sqlalchemy==2.0.46

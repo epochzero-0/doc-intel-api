@@ -6,15 +6,21 @@ from app.database import engine, Base, get_db
 from app import models, schemas, auth
 from app.dependencies import get_current_user 
 from fastapi.security import OAuth2PasswordRequestForm 
-import shutil
+import logging
 import os
 import re
 import uuid
 from fastapi import UploadFile, File
 from app.processing.embedder import chunk_text, get_embedding
 from app.processing.parser import extract_text
-from app.processing.search import find_relevant_chunks, generate_answer 
-from fastapi import BackgroundTasks 
+from app.processing.search import find_relevant_chunks, generate_answer
+from app.storage import make_storage
+from fastapi import BackgroundTasks
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+log = logging.getLogger("docintel")
+
+storage = make_storage()
 
 app = FastAPI(title="Doc Intel API")
 
@@ -82,24 +88,27 @@ def read_users_me(current_user: models.User = Depends(get_current_user)):
     return current_user
 
 from app.database import SessionLocal # import your session maker
-def process_document_task(doc_id: int, file_path: str):
+def process_document_task(doc_id: int, storage_key: str):
     # create a fresh database session for this background thread
     db = SessionLocal()
     try:
-        # 3. unified extraction
-        raw_text = extract_text(file_path)
-        
+        with storage.local_copy(storage_key) as file_path:
+            raw_text = extract_text(file_path)
+
         if not raw_text or raw_text.startswith("Unsupported"):
-            if os.path.exists(file_path):
-                os.remove(file_path)
-            print(f"Processing failed for doc {doc_id}")
+            storage.delete(storage_key)
+            doc = db.query(models.Document).filter(models.Document.id == doc_id).first()
+            if doc:
+                doc.status = "failed"
+            db.commit()
+            log.warning("doc %s: no extractable text, marked failed", doc_id)
             return
 
         # 5. break into chunks
         chunks = chunk_text(raw_text)
-        
+
         # 7. Generate Embeddings and Save Chunks
-        print(f"Generating embeddings for {len(chunks)} chunks in background...")
+        log.info("doc %s: embedding %d chunks", doc_id, len(chunks))
         for i, chunk_content in enumerate(chunks):
             vector = get_embedding(chunk_content)
             new_chunk = models.Chunk(
@@ -116,25 +125,17 @@ def process_document_task(doc_id: int, file_path: str):
             doc.status = "completed"
         
         db.commit()
-        print(f"Processing finished and status updated for doc {doc_id}")
-        
-    except Exception as e:
-        # NEW: If it fails, mark it as failed so the user knows
+        log.info("doc %s: completed", doc_id)
+
+    except Exception:
+        db.rollback()
         doc = db.query(models.Document).filter(models.Document.id == doc_id).first()
         if doc:
             doc.status = "failed"
         db.commit()
-        print(f"🔥 Error in background task: {e}")
+        log.exception("doc %s: processing failed", doc_id)
     finally:
         db.close() # always close your session
-
-BASE_DIR = os.path.dirname(os.path.abspath(__file__)) # this is the /app folder
-# place uploads in the project root (one level above `app`) so the existing
-# top-level `uploads/` directory is used
-PROJECT_ROOT = os.path.dirname(BASE_DIR)
-UPLOAD_DIR = os.path.join(PROJECT_ROOT, "uploads")
-# ensure the uploads directory exists
-os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 
 def safe_extension(filename: str | None) -> str:
@@ -151,10 +152,7 @@ async def upload_document(
     # the client's filename never reaches the filesystem; only its extension does,
     # because the parser picks a reader by extension
     storage_key = f"{current_user.id}/{uuid.uuid4().hex}{safe_extension(file.filename)}"
-    file_path = os.path.join(UPLOAD_DIR, storage_key)
-    os.makedirs(os.path.dirname(file_path), exist_ok=True)
-    with open(file_path, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
+    storage.save(storage_key, file.file)
 
     new_doc = models.Document(
         filename=file.filename,
@@ -166,7 +164,7 @@ async def upload_document(
     db.refresh(new_doc)
 
     # new: trigger the background worker
-    background_tasks.add_task(process_document_task, new_doc.id, file_path)
+    background_tasks.add_task(process_document_task, new_doc.id, storage_key)
 
     return new_doc
 
@@ -214,9 +212,7 @@ def delete_document(
 
     # 2. delete the physical file from the 'uploads' folder
     if doc.storage_key:
-        file_path = os.path.join(UPLOAD_DIR, doc.storage_key)
-        if os.path.exists(file_path):
-            os.remove(file_path)
+        storage.delete(doc.storage_key)
 
     # 3. delete from DB (this allso automatically deletes all related chunks)
     db.delete(doc)

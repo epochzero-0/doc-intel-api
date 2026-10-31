@@ -17,6 +17,7 @@ from sqlalchemy import text
 
 from app import main
 from app.database import Base, engine
+from app.storage import LocalStorage
 
 FAKE_VECTOR = [0.1] * 1536
 
@@ -41,8 +42,7 @@ def upload_root(monkeypatch):
     # The store is a subdirectory, so a write that escapes it lands in a directory
     # the test can see.
     root = os.path.join(tempfile.mkdtemp(prefix="docintel-"), "store")
-    os.makedirs(root)
-    monkeypatch.setattr(main, "UPLOAD_DIR", root)
+    monkeypatch.setattr(main, "storage", LocalStorage(root))
     return root
 
 

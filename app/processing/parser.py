@@ -1,5 +1,6 @@
 import fitz  # PyMuPDF
 from docx import Document as DocxReader
+import logging
 import os
 
 def extract_text(file_path: str) -> str:
@@ -26,7 +27,6 @@ def extract_text(file_path: str) -> str:
         # cleaning up the text (remove excessive whitespace)
         return " ".join(text.split())
 
-    except Exception as e:
-        
-        print(f"Error parsing {file_path}: {str(e)}")
+    except Exception:
+        logging.getLogger("docintel").exception("could not parse %s", file_path)
         return ""
