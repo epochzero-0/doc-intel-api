@@ -118,9 +118,6 @@ def process_document_task(doc_id: int, file_path: str):
         db.commit()
         print(f"Processing finished and status updated for doc {doc_id}")
         
-        db.commit()
-        print(f"Background processing finished for doc {doc_id}!")
-        
     except Exception as e:
         # NEW: If it fails, mark it as failed so the user knows
         doc = db.query(models.Document).filter(models.Document.id == doc_id).first()
