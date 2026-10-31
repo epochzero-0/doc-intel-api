@@ -6,8 +6,10 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# Configuration for JWT
-SECRET_KEY = "KEY" # in production, can use openssl rand -hex 32
+# Generate with: openssl rand -hex 32
+SECRET_KEY = os.getenv("JWT_SECRET_KEY")
+if not SECRET_KEY:
+    raise RuntimeError("JWT_SECRET_KEY is not set; refusing to start")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
 

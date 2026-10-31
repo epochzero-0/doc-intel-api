@@ -59,12 +59,12 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depend
     # use form_data.username instead of user_data.email
     user = db.query(models.User).filter(models.User.email == form_data.username).first()
     
-    if not user:
-        raise HTTPException(status_code=403, detail="Invalid Credentials")
-
-    # use form_data.password
-    if not auth.verify_password(form_data.password, user.password_hash):
-        raise HTTPException(status_code=403, detail="Invalid Credentials")
+    if not user or not auth.verify_password(form_data.password, user.password_hash):
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid Credentials",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
 
     # create Token
     access_token = auth.create_access_token(data={"sub": user.email})
