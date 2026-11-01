@@ -1,4 +1,4 @@
-import type { ButtonHTMLAttributes, ReactNode } from 'react'
+import type { AnchorHTMLAttributes, ButtonHTMLAttributes, ReactNode } from 'react'
 import { Link, type LinkProps } from 'react-router-dom'
 
 type Variant = 'primary' | 'ghost' | 'quiet' | 'danger'
@@ -38,4 +38,14 @@ export function Button({
 
 export function ButtonLink({ variant = 'primary', size = 'md', className, ...rest }: Common & LinkProps) {
   return <Link className={classes(variant, size, className)} {...rest} />
+}
+
+// For links that leave the app.
+export function ButtonAnchor({
+  variant = 'primary',
+  size = 'md',
+  className,
+  ...rest
+}: Common & AnchorHTMLAttributes<HTMLAnchorElement>) {
+  return <a className={classes(variant, size, className)} {...rest} />
 }
