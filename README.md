@@ -1,7 +1,7 @@
 # Doc-Intel
 
 Doc‑Intel is a production-oriented Retrieval‑Augmented Generation (RAG) platform.
-This repository contains a FastAPI backend (document ingestion, embeddings, semantic search) and a React + Vite frontend (chat UI, retrieval inspector, analytics).
+This repository contains a FastAPI backend (document ingestion, embeddings, semantic search) and a React + Vite frontend (landing page, chat with citations, passages panel).
 
 ---
 
@@ -9,9 +9,9 @@ This repository contains a FastAPI backend (document ingestion, embeddings, sema
 
 - Register / Login users (JWT)
 - Upload documents (PDF / DOCX / TXT) — background processing with status polling
-- Chat with uploaded documents (RAG) and see cited sources
-- Inspect retrieval: preview top semantic matches before the AI answer
-- Per‑document analytics stored in `localStorage` (queries, last used, success rate, favorite)
+- Chat with uploaded documents (RAG); each citation opens the passage it came from
+- Search without a model call (Passages only mode)
+- Per-document usage counts in `localStorage` (times used in an answer, last used)
 
 ---
 
@@ -21,8 +21,9 @@ This repository contains a FastAPI backend (document ingestion, embeddings, sema
   - `main.py` — routes, background tasks, document upload
   - `processing/` — `embedder.py`, `parser.py`, `search.py`
 - `frontend/` — React + Vite app
-  - `src/components` — UI components (RetrievalInspector, DocumentStats, Chat, Sidebar)
-  - `src/pages/Dashboard.tsx` — main app shell
+  - `src/pages/` — `Landing.tsx` (`/`), `Login.tsx`, `Register.tsx`, `Dashboard.tsx` (`/app`, the app shell)
+  - `src/components/` — `Chat/`, `Layout/Sidebar.tsx`, `RetrievalInspector.tsx` (passages panel), `Upload/`, `ui/`
+  - `src/context/ChatProvider.tsx` — the thread, ask/retry, and the calls to `/documents/chat` and `/documents/search`
 
 ---
 
@@ -87,18 +88,20 @@ Design tokens (colours, fonts, radius, shadow, motion) live in `frontend/tailwin
 
 - API endpoints used by the frontend (do not modify)
 
+  - `POST /auth/register` — create a user (email, password)
   - `POST /auth/login` — form login (username=email, password)
+  - `GET /users/me` — the signed-in user
   - `POST /documents/upload` — multipart upload (file). Returns document metadata and kicks off background processing.
   - `GET /documents` — list user documents.
   - `GET /documents/{id}/status` — check processing status (`processing` | `completed` | `failed`).
   - `DELETE /documents/{id}` — remove a document.
   - `POST /documents/search` — semantic search (returns matching chunks).
-  - `POST /documents/chat` — RAG answer (returns `answer` and `metadata.sources`).
+  - `POST /documents/chat` — RAG answer (returns `answer`, `metadata.sources` and `metadata.chunks`, the chunks it answered from in citation order).
 
 - Key backend concepts
   - Uploads are stored under a generated key `<user_id>/<uuid><ext>`, in the S3 bucket named by `S3_BUCKET`, or the local `uploads/` folder (`UPLOAD_DIR`) when it is unset. The client's filename is kept only in the database, for display.
   - Document ingestion runs in a background worker; embeddings are generated and stored in Postgres `pgvector`.
-  - The backend returns metadata about sources which the frontend renders into citations and the Source Drawer.
+  - The frontend renders `metadata.chunks` as the answer's citations and the passages panel.
 
 ---
 
@@ -107,15 +110,16 @@ Design tokens (colours, fonts, radius, shadow, motion) live in `frontend/tailwin
 - Register a test user via Swagger UI (`/auth/register`) or via frontend.
 - Login and copy the returned token (frontend does this automatically via `localStorage`).
 - Upload a document (Swagger or frontend). Poll `/documents/{id}/status` until `completed`.
-- Ask a question in the chat: verify the Retrieval Inspector shows pre-chat search results and the assistant response contains sources and citation badges.
+- Ask a question in Answer mode: the answer has `[n]` citations, and clicking one opens passage n in the passages panel.
+- Switch to Passages only and ask again: the panel lists search results and no answer is written.
 
 ---
 
 ## Developer notes
 
-- UI/UX code lives in `frontend/src/components` — look at `RetrievalInspector.tsx`, `DocumentStats.tsx`, `ChatSection.tsx` for the new functionality.
-- The app uses React Query for data fetching, TailwindCSS for styling, Framer Motion for small animations, and `localStorage` for client analytics.
-- We intentionally do a client-side `search` call before the `chat` call (in `ChatContext`) to expose retrieval transparency without changing backend behavior.
+- The app uses React Query for data fetching, TailwindCSS for styling, and `localStorage` for chat history and usage counts.
+- Answer mode makes one call, `/documents/chat`, and shows its `metadata.chunks`. It falls back to a `/documents/search` call only against an API build that doesn't return `chunks`.
+- The API base URL is `VITE_API_URL`, then `window.__API_URL__`, then `<meta name="api-url">` in `index.html`. That meta tag points at production, so a local build without `frontend/.env` talks to the production API.
 
 ## Environment Setup Guide
 
